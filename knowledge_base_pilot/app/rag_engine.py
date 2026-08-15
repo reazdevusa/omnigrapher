@@ -524,7 +524,7 @@ def _get_llm() -> Ollama:
         model=_resolve_llm_model(),
         base_url=OLLAMA_BASE_URL,
         context_window=SETTINGS.llm_num_ctx,
-        additional_kwargs={"num_ctx": SETTINGS.llm_num_ctx, "keep_alive": "24h"},
+        additional_kwargs={"num_ctx": SETTINGS.llm_num_ctx},
         request_timeout=300.0,
     )
 
@@ -534,7 +534,7 @@ def _get_embed_model() -> OllamaEmbedding:
         model_name=EMBED_MODEL,
         base_url=OLLAMA_BASE_URL,
         embed_batch_size=15,
-        ollama_additional_kwargs={"num_ctx": SETTINGS.embedding_num_ctx, "keep_alive": "24h"},
+        ollama_additional_kwargs={"num_ctx": SETTINGS.embedding_num_ctx},
         client_kwargs={"timeout": 120.0},
     )
 
