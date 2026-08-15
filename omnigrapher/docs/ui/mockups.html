@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniGrapher UI Mockups</title>
+  <style>
+    :root {
+      --bg: #0A0A0A;
+      --panel: #111111;
+      --border: #222222;
+      --neon: #4D9FFF;
+      --purple: #A44DFF;
+      --cyan: #3FF0D1;
+      --gray: #D0D0D0;
+      --text: #E5E5E5;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: Inter, Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem; }
+    h1, h2 { color: var(--neon); }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab { padding: 0.6rem 1.2rem; background: var(--panel); border: 1px solid var(--border); color: var(--gray); cursor: pointer; border-radius: 6px; }
+    .tab.active { background: var(--neon); color: #000; font-weight: 600; }
+    .screen { display: none; border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; background: var(--panel); margin-bottom: 2rem; }
+    .screen.active { display: block; }
+    .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+    .panel { background: #0e0e0e; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .panel h3 { margin-top: 0; color: var(--cyan); }
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+    .metric { border-left: 3px solid var(--purple); padding-left: 0.8rem; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); margin-right: 0.4rem; }
+    .placeholder { height: 120px; border: 1px dashed var(--border); border-radius: 6px; display: grid; place-items: center; color: var(--gray); margin-top: 0.5rem; }
+    .node-list { list-style: none; padding: 0; margin: 0; }
+    .node-list li { padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    .pill { display: inline-block; font-size: 0.75rem; padding: 0.15rem 0.4rem; border-radius: 4px; background: var(--purple); color: #fff; margin-left: 0.5rem; }
+    .btn { padding: 0.4rem 0.8rem; background: var(--neon); color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>OmniGrapher UI Mockups</h1>
+  <p>Static HTML wireframes. Open in a browser to view dark-mode dashboards.</p>
+
+  <div class="tabs">
+    <button class="tab active" onclick="show('dashboard')">Main Dashboard</button>
+    <button class="tab" onclick="show('explorer')">Graph Explorer</button>
+    <button class="tab" onclick="show('console')">Agent Console</button>
+    <button class="tab" onclick="show('inspector')">Knowledge Inspector</button>
+    <button class="tab" onclick="show('settings')">Settings / Infra</button>
+  </div>
+
+  <div id="dashboard" class="screen active">
+    <h2>Main Dashboard</h2>
+    <div class="row">
+      <div class="panel" style="grid-column: span 2;">
+        <h3>Graph Visualization</h3>
+        <div class="placeholder">Interactive D3 / Cytoscape graph render</div>
+      </div>
+      <div class="panel">
+        <h3>Agent Activity Feed</h3>
+        <ul class="node-list">
+          <li><span class="status-dot"></span>Indexer completed 12 docs <span class="pill">now</span></li>
+          <li><span class="status-dot" style="background:var(--purple)"></span>Reasoner trace: 8 steps</li>
+          <li><span class="status-dot" style="background:var(--neon)"></span>Summarizer emitted answer</li>
+          <li>Orchestrator: queue 0, 1 running</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Knowledge Base Status</h3>
+        <div class="metric">Documents <strong>1,240</strong></div>
+        <div class="metric">Chunks <strong>42,800</strong></div>
+        <div class="metric">Entities <strong>9,150</strong></div>
+      </div>
+      <div class="panel">
+        <h3>Model Health</h3>
+        <div class="metric"><span class="status-dot"></span>Ollama <strong>11434</strong> OK</div>
+        <div class="metric"><span class="status-dot"></span>llama3.2 loaded</div>
+        <div class="metric"><span class="status-dot" style="background:var(--purple)"></span>nomic-embed-text ready</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="explorer" class="screen">
+    <h2>Graph Explorer</h2>
+    <div class="grid">
+      <div class="panel" style="grid-row: span 2;">
+        <h3>Node List</h3>
+        <input style="width:100%;background:#0A0A0A;color:#D0D0D0;border:1px solid #222;padding:0.4rem;margin-bottom:0.5rem;" placeholder="Filter by name...">
+        <ul class="node-list">
+          <li>node://invoice_2026_042 <span class="pill">doc</span></li>
+          <li>node://OpenAI <span class="pill">entity</span></li>
+          <li>rel://mentions <span class="pill">edge</span></li>
+          <li>node://llama3.2 <span class="pill">model</span></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Relationship View</h3>
+        <div class="placeholder">Force-directed subgraph</div>
+      </div>
+      <div class="panel">
+        <h3>Filters</h3>
+        <label><input type="checkbox" checked> Entity</label><br>
+        <label><input type="checkbox" checked> Document</label><br>
+        <label><input type="checkbox"> Confidence &gt; 0.8</label><br>
+        <label><input type="checkbox" checked> Has source</label>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1;">
+        <h3>Selected Node Detail</h3>
+        <p><strong>ID:</strong> node://OpenAI</p>
+        <p><strong>Type:</strong> entity</p>
+        <p><strong>Confidence:</strong> 0.94</p>
+        <p><strong>Sources:</strong> invoice_2026_042.md, news_2025_12.txt</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="console" class="screen">
+    <h2>Agent Console</h2>
+    <div class="row">
+      <div class="panel">
+        <h3>Indexer <button class="btn">Run</button></h3>
+        <p>State: idle | Last run: 2m ago</p>
+      </div>
+      <div class="panel">
+        <h3>Reasoner <button class="btn">Run</button></h3>
+        <p>State: idle | Pending: 0</p>
+      </div>
+      <div class="panel">
+        <h3>Summarizer <button class="btn">Run</button></h3>
+        <p>State: idle | Last output: 14s ago</p>
+      </div>
+      <div class="panel">
+        <h3>Orchestrator <button class="btn">Pause</button></h3>
+        <p>State: active | Queue: 0/1</p>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1;">
+        <h3>Live Logs</h3>
+        <pre style="background:#0A0A0A;border:1px solid #222;padding:0.8rem;border-radius:6px;max-height:180px;overflow:auto;">[10:04:12] Indexer: ingested invoice_2026_042.pdf
+[10:04:15] Indexer: 18 chunks embedded
+[10:04:18] Orchestrator: job_4412 complete
+[10:04:22] Reasoner: trace 8 steps, confidence 0.91</pre>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1;">
+        <h3>Run History</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr style="border-bottom:1px solid #222;"><th>Run</th><th>Agent</th><th>Status</th><th>Time</th></tr>
+          <tr><td>r-991</td><td>Indexer</td><td>success</td><td>2m ago</td></tr>
+          <tr><td>r-990</td><td>Reasoner</td><td>success</td><td>5m ago</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="inspector" class="screen">
+    <h2>Knowledge Inspector</h2>
+    <div class="row">
+      <div class="panel" style="grid-column: span 2;">
+        <h3>Document List</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr style="border-bottom:1px solid #222;"><th>Name</th><th>Format</th><th>Chunks</th><th>Embedding</th><th>Index</th></tr>
+          <tr><td>invoice_2026_042.pdf</td><td>PDF</td><td>18</td><td>OK</td><td>OK</td></tr>
+          <tr><td>api_design.md</td><td>MD</td><td>42</td><td>OK</td><td>OK</td></tr>
+          <tr><td>notes_q1.txt</td><td>TXT</td><td>5</td><td>stale</td><td>rebuild</td></tr>
+        </table>
+      </div>
+      <div class="panel">
+        <h3>Embedding Status</h3>
+        <div class="metric">nomic-embed-text <strong>active</strong></div>
+        <div class="metric">Dimensions <strong>768</strong></div>
+        <div class="metric">Collection <strong>omnigrapher_kb</strong></div>
+      </div>
+      <div class="panel">
+        <h3>Index Health</h3>
+        <div class="metric">ChromaDB <strong>mounted</strong></div>
+        <div class="metric">Vectors <strong>42,800</strong></div>
+        <div class="metric">Last rebuild <strong>2m ago</strong></div>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1;">
+        <button class="btn">Re-ingest selected</button>
+        <button class="btn" style="background:var(--purple);">Rebuild entire index</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings" class="screen">
+    <h2>Settings / Infra Panel</h2>
+    <div class="row">
+      <div class="panel">
+        <h3>Ollama</h3>
+        <p><span class="status-dot"></span> Running on :11434</p>
+        <p>Model home: <code>D:\.ollama\models</code></p>
+        <p>Loaded models: llama3.2, nomic-embed-text</p>
+      </div>
+      <div class="panel">
+        <h3>ChromaDB</h3>
+        <p><span class="status-dot"></span> Persistent</p>
+        <p>Path: <code>knowledge_base_pilot\chroma_db</code></p>
+      </div>
+      <div class="panel">
+        <h3>Backend</h3>
+        <p><span class="status-dot"></span> FastAPI :8001</p>
+        <p>Database: SQLite <code>kb.db</code></p>
+      </div>
+      <div class="panel">
+        <h3>Deployment</h3>
+        <p>Terraform: <span class="status-dot" style="background:var(--gray)"></span> not applied</p>
+        <p>GCP: not configured</p>
+        <p>Cloudflare: not configured</p>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1;">
+        <h3>Backup Status</h3>
+        <p>Last local backup: <strong>never</strong> — run <code>omnigrapher\scripts\backup\run-backup.ps1</code></p>
+        <p>Last external HDD backup: <strong>never</strong></p>
+        <p>GitHub repo: <code>reazdevusa/omnigrapher</code></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function show(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+    }
+  </script>
+</body>
+</html>

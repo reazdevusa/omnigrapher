@@ -1,0 +1,256 @@
+data: {"type": "citation", "page": 27, "chunk_id": "bb784f42-8ee1-44f9-b094-48d44863cd62", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 2, "chunk_id": "6dec9e98-efa7-4bae-89cb-b9fad9950c19", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 28, "chunk_id": "e48f3c96-8e75-4b06-80df-404697facdf9", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 29, "chunk_id": "d825cff2-a470-4d90-a8f2-9bd0415b26fe", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 49, "chunk_id": "a848fd04-340f-40d9-a4c9-77779f164281", "source": "GRE Book.pdf"}
+
+data: {"type": "token", "token": "The"}
+
+data: {"type": "token", "token": " mathematical"}
+
+data: {"type": "token", "token": " parts"}
+
+data: {"type": "token", "token": " in"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " book"}
+
+data: {"type": "token", "token": " include"}
+
+data: {"type": "token", "token": ":\n\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Algebra"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Geometry"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Poly"}
+
+data: {"type": "token", "token": "gons"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "total"}
+
+data: {"type": "token", "token": " degrees"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " average"}
+
+data: {"type": "token", "token": " degrees"}
+
+data: {"type": "token", "token": " per"}
+
+data: {"type": "token", "token": " side"}
+
+data: {"type": "token", "token": ")\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Prime"}
+
+data: {"type": "token", "token": " numbers"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " integers"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Fast"}
+
+data: {"type": "token", "token": " fractions"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "e"}
+
+data: {"type": "token", "token": ".g"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "+y"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "+"}
+
+data: {"type": "token", "token": "5"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "×"}
+
+data: {"type": "token", "token": "5"}
+
+data: {"type": "token", "token": ")\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Div"}
+
+data: {"type": "token", "token": "is"}
+
+data: {"type": "token", "token": "ibility"}
+
+data: {"type": "token", "token": " rules"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "3"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "4"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "5"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "6"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "8"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "9"}
+
+data: {"type": "token", "token": ")\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Com"}
+
+data: {"type": "token", "token": "binations"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Per"}
+
+data: {"type": "token", "token": "mutations"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Probability"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Basic"}
+
+data: {"type": "token", "token": " Concepts"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " Algebra"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "including"}
+
+data: {"type": "token", "token": " FO"}
+
+data: {"type": "token", "token": "IL"}
+
+data: {"type": "token", "token": " method"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " multiplying"}
+
+data: {"type": "token", "token": " expressions"}
+
+data: {"type": "token", "token": ")\n\n"}
+
+data: {"type": "token", "token": "These"}
+
+data: {"type": "token", "token": " mathematical"}
+
+data: {"type": "token", "token": " concepts"}
+
+data: {"type": "token", "token": " are"}
+
+data: {"type": "token", "token": " covered"}
+
+data: {"type": "token", "token": " throughout"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " book"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " particularly"}
+
+data: {"type": "token", "token": " in"}
+
+data: {"type": "token", "token": " chapters"}
+
+data: {"type": "token", "token": " related"}
+
+data: {"type": "token", "token": " to"}
+
+data: {"type": "token", "token": " algebra"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " geometry"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " advanced"}
+
+data: {"type": "token", "token": " math"}
+
+data: {"type": "token", "token": " topics"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type":"done"}
+

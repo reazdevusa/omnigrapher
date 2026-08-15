@@ -1,0 +1,29 @@
+﻿{
+    "startedAt":  "2026-08-04T09:25:27.7446561-04:00",
+    "services":  [
+                     {
+                         "name":  "backend",
+                         "pid":  33720,
+                         "port":  8001,
+                         "cmd":  "Set-Location \u0027D:\\Upwork\\ai_knowledge_base_suite\\scripts\\..\\knowledge_base_pilot\u0027; =\u0027http://localhost:11434\u0027; \u0026 \u0027D:\\Upwork\\ai_knowledge_base_suite\\scripts\\..\\.venv\\Scripts\\python.exe\u0027 -m pip install -r requirements.txt; if (0 -ne 0) { throw \u0027pip install failed\u0027 }; \u0026 \u0027D:\\Upwork\\ai_knowledge_base_suite\\scripts\\..\\.venv\\Scripts\\python.exe\u0027 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8001"
+                     },
+                     {
+                         "name":  "celery",
+                         "pid":  3296,
+                         "port":  null,
+                         "cmd":  "Set-Location \u0027D:\\Upwork\\ai_knowledge_base_suite\\scripts\\..\\knowledge_base_pilot\u0027; \u0026 \u0027D:\\Upwork\\ai_knowledge_base_suite\\scripts\\..\\.venv\\Scripts\\python.exe\u0027 -m celery -A app.celery_app worker -Q ingestion -l info --pool=solo"
+                     },
+                     {
+                         "name":  "frontend",
+                         "pid":  39796,
+                         "port":  3000,
+                         "cmd":  "Set-Location \u0027D:\\Upwork\\ai_knowledge_base_suite\\scripts\\..\\web_app_nextjs\u0027; \u0026 \u0027C:\\Program Files\\nodejs\\npm.cmd\u0027 run dev -- --port 3000"
+                     },
+                     {
+                         "name":  "watchdog",
+                         "pid":  36052,
+                         "port":  null,
+                         "cmd":  "Set-Location \u0027D:\\Upwork\\ai_knowledge_base_suite\\scripts\u0027; \u0026 \u0027C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\u0027 -ExecutionPolicy Bypass -File watchdog.ps1"
+                     }
+                 ]
+}

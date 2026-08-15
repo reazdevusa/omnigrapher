@@ -1,0 +1,1 @@
+The Enterprise AI Knowledge Base Pilot uses FastAPI and LlamaIndex. The official project kickoff date is May 30, 2026.

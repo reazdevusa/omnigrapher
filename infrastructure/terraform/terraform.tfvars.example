@@ -1,0 +1,10 @@
+aws_region          = "us-east-1"
+project_name        = "ai-kb"
+environment         = "prod"
+db_password         = "REPLACE_WITH_STRONG_PASSWORD"
+redis_node_type     = "cache.t3.micro"
+db_instance_class   = "db.t3.micro"
+app_container_image = ""
+app_cpu             = 512
+app_memory          = 1024
+app_count           = 2

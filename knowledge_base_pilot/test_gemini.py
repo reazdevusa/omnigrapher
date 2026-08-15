@@ -1,0 +1,1 @@
+from app.providers import get_provider; from app.providers.base import Message; p = get_provider("gemini-1.5-flash"); print("api_key:", repr(p.api_key)); p.generate("gemini-1.5-flash", [Message(role="user", content="hi")])

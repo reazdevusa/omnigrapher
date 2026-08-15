@@ -1,0 +1,690 @@
+data: {"type": "citation", "page": 3, "chunk_id": "03aff960-7d33-4fdc-8484-34e98ecc27f4", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 27, "chunk_id": "bb784f42-8ee1-44f9-b094-48d44863cd62", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 2, "chunk_id": "6dec9e98-efa7-4bae-89cb-b9fad9950c19", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 28, "chunk_id": "e48f3c96-8e75-4b06-80df-404697facdf9", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 9, "chunk_id": "5d6a5f5f-57d5-4a84-8b87-222b922477b0", "source": "GRE Book.pdf"}
+
+data: {"type": "token", "token": "**"}
+
+data: {"type": "token", "token": "Math"}
+
+data: {"type": "token", "token": "ematic"}
+
+data: {"type": "token", "token": "al"}
+
+data: {"type": "token", "token": " Concepts"}
+
+data: {"type": "token", "token": " Covered"}
+
+data: {"type": "token", "token": " in"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " Book"}
+
+data: {"type": "token", "token": "**\n\n"}
+
+data: {"type": "token", "token": "The"}
+
+data: {"type": "token", "token": " provided"}
+
+data: {"type": "token", "token": " passages"}
+
+data: {"type": "token", "token": " from"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " GRE"}
+
+data: {"type": "token", "token": " Book"}
+
+data: {"type": "token", "token": ".pdf"}
+
+data: {"type": "token", "token": " outline"}
+
+data: {"type": "token", "token": " various"}
+
+data: {"type": "token", "token": " mathematical"}
+
+data: {"type": "token", "token": " concepts"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " topics"}
+
+data: {"type": "token", "token": " covered"}
+
+data: {"type": "token", "token": " in"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " book"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " These"}
+
+data: {"type": "token", "token": " include"}
+
+data: {"type": "token", "token": ":\n\n"}
+
+data: {"type": "token", "token": "1"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Basic"}
+
+data: {"type": "token", "token": " Math"}
+
+data: {"type": "token", "token": " Concepts"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Factor"}
+
+data: {"type": "token", "token": "ials"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Data"}
+
+data: {"type": "token", "token": " Interpret"}
+
+data: {"type": "token", "token": "ation"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Geometry"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Squ"}
+
+data: {"type": "token", "token": "ares"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " rectangles"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " tr"}
+
+data: {"type": "token", "token": "ape"}
+
+data: {"type": "token", "token": "z"}
+
+data: {"type": "token", "token": "oids"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " polygons"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Area"}
+
+data: {"type": "token", "token": " formulas"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "s"}
+
+data: {"type": "token", "token": "quares"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " `"}
+
+data: {"type": "token", "token": "A"}
+
+data: {"type": "token", "token": " ="}
+
+data: {"type": "token", "token": " s"}
+
+data: {"type": "token", "token": "^"}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "`,"}
+
+data: {"type": "token", "token": " rectangles"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " `"}
+
+data: {"type": "token", "token": "P"}
+
+data: {"type": "token", "token": " ="}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "l"}
+
+data: {"type": "token", "token": " +"}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "w"}
+
+data: {"type": "token", "token": "`"}
+
+data: {"type": "token", "token": "),"}
+
+data: {"type": "token", "token": " perimeter"}
+
+data: {"type": "token", "token": " formulas"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " total"}
+
+data: {"type": "token", "token": " degrees"}
+
+data: {"type": "token", "token": " (`"}
+
+data: {"type": "token", "token": "Total"}
+
+data: {"type": "token", "token": " degrees"}
+
+data: {"type": "token", "token": " ="}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "180"}
+
+data: {"type": "token", "token": "(n"}
+
+data: {"type": "token", "token": "-"}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": ")`"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " polygons"}
+
+data: {"type": "token", "token": ")\n"}
+
+data: {"type": "token", "token": "3"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Prime"}
+
+data: {"type": "token", "token": " Numbers"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Int"}
+
+data: {"type": "token", "token": "egers"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Definition"}
+
+data: {"type": "token", "token": " of"}
+
+data: {"type": "token", "token": " prime"}
+
+data: {"type": "token", "token": " numbers"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " integers"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Examples"}
+
+data: {"type": "token", "token": " of"}
+
+data: {"type": "token", "token": " prime"}
+
+data: {"type": "token", "token": " numbers"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "e"}
+
+data: {"type": "token", "token": ".g"}
+
+data: {"type": "token", "token": ".,"}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": " is"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " smallest"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " only"}
+
+data: {"type": "token", "token": " even"}
+
+data: {"type": "token", "token": " prime"}
+
+data: {"type": "token", "token": " number"}
+
+data: {"type": "token", "token": ")\n"}
+
+data: {"type": "token", "token": "4"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Al"}
+
+data: {"type": "token", "token": "gebra"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Basic"}
+
+data: {"type": "token", "token": " concepts"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " Algebra"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "5"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Com"}
+
+data: {"type": "token", "token": "binations"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Per"}
+
+data: {"type": "token", "token": "mutations"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Formula"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " combinations"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " `"}
+
+data: {"type": "token", "token": "n"}
+
+data: {"type": "token", "token": "Cr"}
+
+data: {"type": "token", "token": " ="}
+
+data: {"type": "token", "token": " r"}
+
+data: {"type": "token", "token": "!("}
+
+data: {"type": "token", "token": "n"}
+
+data: {"type": "token", "token": "-r"}
+
+data: {"type": "token", "token": ")`\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Formula"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " permutations"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " `"}
+
+data: {"type": "token", "token": "n"}
+
+data: {"type": "token", "token": "Pr"}
+
+data: {"type": "token", "token": " ="}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "n"}
+
+data: {"type": "token", "token": "-r"}
+
+data: {"type": "token", "token": ")!"}
+
+data: {"type": "token", "token": "`\n"}
+
+data: {"type": "token", "token": "6"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Probability"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Definition"}
+
+data: {"type": "token", "token": " of"}
+
+data: {"type": "token", "token": " probability"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " \""}
+
+data: {"type": "token", "token": "number"}
+
+data: {"type": "token", "token": " of"}
+
+data: {"type": "token", "token": " ways"}
+
+data: {"type": "token", "token": " that"}
+
+data: {"type": "token", "token": " fit"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " requirement"}
+
+data: {"type": "token", "token": "\"\n"}
+
+data: {"type": "token", "token": "7"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Geometry"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "continued"}
+
+data: {"type": "token", "token": ")"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Div"}
+
+data: {"type": "token", "token": "is"}
+
+data: {"type": "token", "token": "ibility"}
+
+data: {"type": "token", "token": " rules"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " numbers"}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "3"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "4"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "5"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "6"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "8"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "9"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "8"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Quant"}
+
+data: {"type": "token", "token": "itative"}
+
+data: {"type": "token", "token": " Analysis"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Formula"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " permutations"}
+
+data: {"type": "token", "token": " (`"}
+
+data: {"type": "token", "token": "n"}
+
+data: {"type": "token", "token": "Pr"}
+
+data: {"type": "token", "token": " ="}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "n"}
+
+data: {"type": "token", "token": "-r"}
+
+data: {"type": "token", "token": ")!"}
+
+data: {"type": "token", "token": "`)\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Number"}
+
+data: {"type": "token", "token": " of"}
+
+data: {"type": "token", "token": " questions"}
+
+data: {"type": "token", "token": " in"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " Quant"}
+
+data: {"type": "token", "token": "itative"}
+
+data: {"type": "token", "token": " section"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "20"}
+
+data: {"type": "token", "token": " per"}
+
+data: {"type": "token", "token": " section"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Time"}
+
+data: {"type": "token", "token": " limit"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " each"}
+
+data: {"type": "token", "token": " section"}
+
+data: {"type": "token", "token": ":"}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "35"}
+
+data: {"type": "token", "token": " minutes"}
+
+data: {"type": "token", "token": "\n\n"}
+
+data: {"type": "token", "token": "These"}
+
+data: {"type": "token", "token": " mathematical"}
+
+data: {"type": "token", "token": " concepts"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " topics"}
+
+data: {"type": "token", "token": " are"}
+
+data: {"type": "token", "token": " likely"}
+
+data: {"type": "token", "token": " to"}
+
+data: {"type": "token", "token": " be"}
+
+data: {"type": "token", "token": " covered"}
+
+data: {"type": "token", "token": " in"}
+
+data: {"type": "token", "token": " various"}
+
+data: {"type": "token", "token": " sections"}
+
+data: {"type": "token", "token": " of"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " book"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " including"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " Ver"}
+
+data: {"type": "token", "token": "bal"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Quant"}
+
+data: {"type": "token", "token": "itative"}
+
+data: {"type": "token", "token": " sections"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type":"done"}
+

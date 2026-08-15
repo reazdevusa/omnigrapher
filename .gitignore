@@ -1,0 +1,62 @@
+# --- OmniGrapher / AI Knowledge Base Suite ---
+
+# Environments
+.env
+.env.local
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Databases / caches
+*.db
+*.sqlite3
+chroma_db/
+kuzu_db/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+node_modules/
+.next/
+
+# Logs
+*.log
+logs/
+
+# Runtime / temp
+*.tmp
+*.temp
+celerybeat-schedule
+
+# IDE
+.vscode/
+.idea/
+
+# Devin session metadata (backed up separately; do NOT version)
+.devin/sessions/
+.devin/metadata/
+omnigrapher/.devin/sessions/
+omnigrapher/.devin/metadata/
+
+# Ollama models (backed up separately; do NOT version)
+.ollama/models/
+.ollama/cache/
+
+# External / backup storage
+backups/
+omnigrapher/backups/
+
+# Large model / embedding artifacts
+models/
+embeddings/
+*.gguf
+*.bin
+
+# OS
+Thumbs.db
+.DS_Store

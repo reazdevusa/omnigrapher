@@ -1,0 +1,19 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0 -- D:\Upwork\ai_knowledge_base_suite\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\Upwork\ai_knowledge_base_suite\knowledge_base_pilot
+plugins: anyio-4.14.2, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/test_hybrid_retrieval.py::TestHybridRetrieval::test_bm25_recover_exact_acronym PASSED [ 33%]
+tests/test_hybrid_retrieval.py::TestHybridRetrieval::test_fallback_keyword_rerank PASSED [ 66%]
+tests/test_hybrid_retrieval.py::TestHybridRetrieval::test_rrf_fusion_uses_both_lists PASSED [100%]
+
+============================== warnings summary ===============================
+app\database.py:35
+  D:\Upwork\ai_knowledge_base_suite\knowledge_base_pilot\app\database.py:35: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 3 passed, 1 warning in 18.81s ========================

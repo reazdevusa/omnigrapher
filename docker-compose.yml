@@ -1,0 +1,148 @@
+name: ai-knowledge-base-suite
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: knowledge-base-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: knowledge_base
+      POSTGRES_USER: awap_user
+      POSTGRES_PASSWORD: awap_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U awap_user -d knowledge_base"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  chromadb:
+    image: chromadb/chroma:0.6.3
+    container_name: knowledge-base-chromadb
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /chroma/chroma
+      ANONYMIZED_TELEMETRY: "FALSE"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/8000"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: knowledge-base-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --dir /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: knowledge-base-ollama
+    hostname: knowledge-base-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_ORIGINS=*
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=4
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./knowledge_base_pilot
+    container_name: knowledge-base-backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - PG_DATABASE_URL=postgresql+psycopg2://awap_user:awap_password@postgres:5432/knowledge_base
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_BASE_URL=http://knowledge-base-ollama:11434
+      - LLM_MODEL=llama3.2:latest
+      - EMBED_MODEL=nomic-embed-text:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./knowledge_base_pilot:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+  celery:
+    build: ./knowledge_base_pilot
+    container_name: knowledge-base-celery
+    restart: unless-stopped
+    environment:
+      - PG_DATABASE_URL=postgresql+psycopg2://awap_user:awap_password@postgres:5432/knowledge_base
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_BASE_URL=http://knowledge-base-ollama:11434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    command: ["celery", "-A", "app.celery_app", "worker", "-Q", "ingestion", "-l", "info", "--pool=solo"]
+
+  frontend:
+    build: ./web_app_nextjs
+    container_name: knowledge-base-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+    depends_on:
+      - backend
+    volumes:
+      - ./web_app_nextjs:/app
+      - /app/node_modules
+
+volumes:
+  ollama_data:
+  postgres_data:
+  chroma_data:
+  redis_data:

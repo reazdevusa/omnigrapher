@@ -1,0 +1,362 @@
+data: {"type": "citation", "page": 27, "chunk_id": "bb784f42-8ee1-44f9-b094-48d44863cd62", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 2, "chunk_id": "6dec9e98-efa7-4bae-89cb-b9fad9950c19", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 28, "chunk_id": "e48f3c96-8e75-4b06-80df-404697facdf9", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 29, "chunk_id": "d825cff2-a470-4d90-a8f2-9bd0415b26fe", "source": "GRE Book.pdf"}
+
+data: {"type": "citation", "page": 49, "chunk_id": "a848fd04-340f-40d9-a4c9-77779f164281", "source": "GRE Book.pdf"}
+
+data: {"type": "token", "token": "**"}
+
+data: {"type": "token", "token": "Math"}
+
+data: {"type": "token", "token": "ematic"}
+
+data: {"type": "token", "token": "al"}
+
+data: {"type": "token", "token": " Topics"}
+
+data: {"type": "token", "token": " Covered"}
+
+data: {"type": "token", "token": " in"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " Book"}
+
+data: {"type": "token", "token": "**\n\n"}
+
+data: {"type": "token", "token": "The"}
+
+data: {"type": "token", "token": " M"}
+
+data: {"type": "token", "token": "ago"}
+
+data: {"type": "token", "token": "osh"}
+
+data: {"type": "token", "token": " GRE"}
+
+data: {"type": "token", "token": " Book"}
+
+data: {"type": "token", "token": " covers"}
+
+data: {"type": "token", "token": " a"}
+
+data: {"type": "token", "token": " wide"}
+
+data: {"type": "token", "token": " range"}
+
+data: {"type": "token", "token": " of"}
+
+data: {"type": "token", "token": " mathematical"}
+
+data: {"type": "token", "token": " topics"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " including"}
+
+data: {"type": "token", "token": ":\n\n"}
+
+data: {"type": "token", "token": "1"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Basic"}
+
+data: {"type": "token", "token": " Concepts"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Algebra"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Com"}
+
+data: {"type": "token", "token": "binations"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Per"}
+
+data: {"type": "token", "token": "mutations"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "2"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Geometry"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Tr"}
+
+data: {"type": "token", "token": "igon"}
+
+data: {"type": "token", "token": "ometry"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Squ"}
+
+data: {"type": "token", "token": "ares"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " Rect"}
+
+data: {"type": "token", "token": "angles"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " Tra"}
+
+data: {"type": "token", "token": "pez"}
+
+data: {"type": "token", "token": "oids"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Poly"}
+
+data: {"type": "token", "token": "gons"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Distance"}
+
+data: {"type": "token", "token": " Formula"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "3"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Number"}
+
+data: {"type": "token", "token": " Theory"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Div"}
+
+data: {"type": "token", "token": "is"}
+
+data: {"type": "token", "token": "ibility"}
+
+data: {"type": "token", "token": " rules"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "3"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "4"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "5"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "6"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "8"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " "}
+
+data: {"type": "token", "token": "9"}
+
+data: {"type": "token", "token": ")\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Prime"}
+
+data: {"type": "token", "token": " numbers"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " integers"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "4"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Probability"}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " Statistics"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Probability"}
+
+data: {"type": "token", "token": " concepts"}
+
+data: {"type": "token", "token": "\n"}
+
+data: {"type": "token", "token": "5"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type": "token", "token": " **"}
+
+data: {"type": "token", "token": "Math"}
+
+data: {"type": "token", "token": "ematic"}
+
+data: {"type": "token", "token": "al"}
+
+data: {"type": "token", "token": " Operations"}
+
+data: {"type": "token", "token": "**\n"}
+
+data: {"type": "token", "token": "\t"}
+
+data: {"type": "token", "token": "*"}
+
+data: {"type": "token", "token": " Arithmetic"}
+
+data: {"type": "token", "token": " operations"}
+
+data: {"type": "token", "token": " ("}
+
+data: {"type": "token", "token": "add"}
+
+data: {"type": "token", "token": "ition"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " subtraction"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " multiplication"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " division"}
+
+data: {"type": "token", "token": ")\n\n"}
+
+data: {"type": "token", "token": "These"}
+
+data: {"type": "token", "token": " mathematical"}
+
+data: {"type": "token", "token": " topics"}
+
+data: {"type": "token", "token": " are"}
+
+data: {"type": "token", "token": " essential"}
+
+data: {"type": "token", "token": " for"}
+
+data: {"type": "token", "token": " success"}
+
+data: {"type": "token", "token": " on"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " GRE"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " the"}
+
+data: {"type": "token", "token": " book"}
+
+data: {"type": "token", "token": " provides"}
+
+data: {"type": "token", "token": " detailed"}
+
+data: {"type": "token", "token": " explanations"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " examples"}
+
+data: {"type": "token", "token": ","}
+
+data: {"type": "token", "token": " and"}
+
+data: {"type": "token", "token": " practice"}
+
+data: {"type": "token", "token": " questions"}
+
+data: {"type": "token", "token": " to"}
+
+data: {"type": "token", "token": " help"}
+
+data: {"type": "token", "token": " you"}
+
+data: {"type": "token", "token": " master"}
+
+data: {"type": "token", "token": " them"}
+
+data: {"type": "token", "token": "."}
+
+data: {"type":"done"}
+

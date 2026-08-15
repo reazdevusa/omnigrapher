@@ -1,0 +1,13 @@
+project_id      = "your-gcp-project-id"
+region          = "us-central1"
+zone            = "us-central1-a"
+environment     = "prod"
+db_password     = "REPLACE_WITH_STRONG_PASSWORD"
+app_image       = ""
+app_cpu         = "1"
+app_memory      = "2Gi"
+app_min_instances = 1
+app_max_instances = 10
+cloudflare_account_id = "your-cloudflare-account-id"
+cloudflare_api_token  = "your-cloudflare-api-token"
+r2_bucket_name        = "your-unique-r2-bucket-name"

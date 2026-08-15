@@ -1,0 +1,13 @@
+{
+  "project": "OmniGrapher",
+  "repository": "https://github.com/reazdevusa/omnigrapher",
+  "workspace_root": "D:\\Upwork\\ai_knowledge_base_suite",
+  "primary_branch": "main",
+  "aliases": ["ai_knowledge_base_suite"],
+  "restored_at": "2026-08-15T00:00:00Z",
+  "notes": [
+    "Local .devin/sessions directory rebuilt as a stable landing zone.",
+    "Historical chat sessions could not be recovered from local disk after the C: -> G: migration; they live in Devin Cloud and must be re-linked via the Devin Cloud UI.",
+    "Git provider should be reconnected in Devin Cloud settings to https://github.com/reazdevusa/omnigrapher."
+  ]
+}

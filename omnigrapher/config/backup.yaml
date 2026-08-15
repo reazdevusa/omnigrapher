@@ -1,0 +1,98 @@
+project: OmniGrapher
+workspace: D:\Upwork\ai_knowledge_base_suite
+version: "1.0.0"
+
+# --- Layer 1: Local Backup (Primary) ---
+local:
+  enabled: true
+  destination: "{{workspace}}\\omnigrapher\\backups\\local"
+  interval_hours: 6
+  include:
+    - .devin/sessions
+    - .devin/metadata
+    - .devin/workspace.json
+    - .ollama
+    - knowledge_base_pilot/chroma_db
+    - knowledge_base_pilot/kb.db
+    - knowledge_base_pilot/embeddings
+    - logs
+    - omnigrapher/.devin
+    - omnigrapher/.devin/metadata
+  exclude:
+    - .venv
+    - venv
+    - node_modules
+    - __pycache__
+    - .next
+    - build
+    - dist
+
+# --- Layer 2: External HDD (Cold Backup) ---
+external:
+  enabled: true
+  drive: G:
+  destination: "G:\\DO_NOT_DELETE\\OmniGrapher_Backups"
+  interval_hours: 24
+  include:
+    - .devin
+    - .ollama
+    - chroma_db
+    - embeddings
+    - kb.db
+    - logs
+    - project_snapshot
+  exclude:
+    - .venv
+    - node_modules
+    - .next
+
+# --- Layer 3: GitHub (Versioned) ---
+git:
+  enabled: true
+  origin: https://github.com/reazdevusa/omnigrapher
+  branch: main
+  include:
+    - README.md
+    - .gitignore
+    - knowledge_base_pilot/app
+    - web_app_nextjs
+    - desktop_app
+    - web_app
+    - infrastructure
+    - omnigrapher
+    - docs
+    - scripts
+  exclude:
+    - .devin/sessions
+    - .devin/metadata
+    - .ollama
+    - chroma_db
+    - embeddings
+    - .env
+    - .env.local
+    - __pycache__
+    - .venv
+
+# --- Layer 4: Cloud (Optional) ---
+cloud:
+  enabled: false
+  provider: google_drive
+  destination: /OmniGrapher/cloud
+  interval_days: 30
+  include:
+    - .devin/metadata
+    - project_archives
+
+# --- Integrity ---
+integrity:
+  corruption_check: true
+  hash_algorithm: SHA256
+  manifest_file: backup-manifest.json
+  consistency_check_before: true
+  notify_on_failure: true
+
+# --- Retention ---
+retention:
+  local: 7
+  external: 14
+  cloud: 90

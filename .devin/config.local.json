@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(Write-Host)",
+      "Exec(Select-Object)",
+      "Exec(Test-Path)"
+    ]
+  }
+}
