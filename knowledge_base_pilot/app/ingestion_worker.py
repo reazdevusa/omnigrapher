@@ -348,7 +348,7 @@ def stop_ingestion_worker() -> None:
 
 def notify_ingestion_worker() -> None:
     """Enqueue all pending documents as Celery ingestion tasks."""
-    from app.tasks import index_document_task
+    from app.tasks.ingestion import index_document_task
 
     db = create_db_session()
     try:

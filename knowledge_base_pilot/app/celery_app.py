@@ -41,7 +41,7 @@ celery = Celery(
     "ingestion",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks", "app.tasks.cdc_sync"],
+    include=["app.tasks.ingestion", "app.tasks.cdc_sync"],
 )
 
 celery.conf.update(
@@ -56,7 +56,7 @@ celery.conf.update(
     task_eager_propagates=True,
     task_default_queue="ingestion",
     task_routes={
-        "app.tasks.index_document_task": {"queue": "ingestion"},
+        "app.tasks.ingestion.index_document_task": {"queue": "ingestion"},
         "app.tasks.cdc_sync.sync_connector_task": {"queue": "ingestion"},
     },
     beat_schedule={
