@@ -294,7 +294,7 @@ def _warmup_ollama():
                 "prompt": "",
                 "keep_alive": "24h",
             },
-            timeout=60,
+            timeout=300,
         )
     except Exception:
         # Warmup is best-effort; actual health is checked via _check_ollama.

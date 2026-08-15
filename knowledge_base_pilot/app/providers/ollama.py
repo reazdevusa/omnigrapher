@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class OllamaProvider(LLMProvider):
     name = "ollama"
 
-    def __init__(self, host: Optional[str] = None, timeout: int = 60):
+    def __init__(self, host: Optional[str] = None, timeout: int = 300):
         def _get_env(key: str, default: str) -> str:
             value = os.getenv(key, "")
             return value.strip() or default
@@ -44,6 +44,7 @@ class OllamaProvider(LLMProvider):
             "model": model,
             "messages": [m.to_dict() for m in messages],
             "stream": False,
+            "keep_alive": "24h",
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
@@ -112,6 +113,7 @@ class OllamaProvider(LLMProvider):
             "model": model,
             "messages": [m.to_dict() for m in messages],
             "stream": True,
+            "keep_alive": "24h",
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,

@@ -525,7 +525,7 @@ def _get_llm() -> Ollama:
         base_url=OLLAMA_BASE_URL,
         context_window=SETTINGS.llm_num_ctx,
         additional_kwargs={"num_ctx": SETTINGS.llm_num_ctx},
-        request_timeout=60.0,
+        request_timeout=300.0,
     )
 
 
@@ -1139,7 +1139,7 @@ def _stream_rag(query_text: str, passages: list[dict], history: Optional[list[di
                 "options": {"num_ctx": SETTINGS.llm_num_ctx},
             },
             stream=True,
-            timeout=(10, 60),
+            timeout=(10, 300),
         ) as response:
             response.raise_for_status()
             for line in response.iter_lines(decode_unicode=True):
@@ -1283,7 +1283,7 @@ def _stream_assistant(query_text: str, history: Optional[list[dict]] = None) -> 
                 "options": {"num_ctx": SETTINGS.llm_num_ctx},
             },
             stream=True,
-            timeout=(10, 60),
+            timeout=(10, 300),
         ) as response:
             response.raise_for_status()
             for line in response.iter_lines(decode_unicode=True):
