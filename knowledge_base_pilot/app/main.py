@@ -762,8 +762,6 @@ def rename_document(
 def document_content(filename: str, user: User = Depends(get_current_user)):
     filename = unquote(filename)
     file_path = _get_user_document_path(user.id, filename)
-    if not file_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     try:
         result = _get_rag().get_document_content(file_path, user.id)
@@ -777,8 +775,6 @@ def document_content(filename: str, user: User = Depends(get_current_user)):
 def document_chunks(filename: str, user: User = Depends(get_current_user)):
     filename = unquote(filename)
     file_path = _get_user_document_path(user.id, filename)
-    if not file_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     chunks = _get_rag().get_document_chunks(file_path, user.id)
     return DocumentChunksResponse(filename=filename, chunks=chunks)
