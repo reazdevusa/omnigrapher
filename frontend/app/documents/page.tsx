@@ -57,7 +57,7 @@ export default function DocumentsPage() {
           <span className="text-sm text-indigo-500 font-medium">
             {uploading ? "Uploading…" : "Click to select file"}
           </span>
-          <span className="text-xs text-gray-400 mt-1">PDF, DOCX, TXT</span>
+          <span className="text-xs text-gray-400 mt-1">PDF, DOCX, TXT, MD</span>
           <input
             ref={inputRef}
             type="file"

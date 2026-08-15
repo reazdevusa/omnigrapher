@@ -9,9 +9,7 @@ interface Message {
   sources?: string[];
 }
 
-const SESSION_ID = typeof crypto !== "undefined"
-  ? crypto.randomUUID()
-  : Math.random().toString(36).slice(2);
+const SESSION_ID = crypto.randomUUID();
 
 export default function ChatPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
