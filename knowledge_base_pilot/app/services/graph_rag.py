@@ -41,9 +41,10 @@ def _get_connection():
         return None
     global _db, _conn
     if _conn is None:
-        db_path = Path(KUZU_DB_PATH)
-        db_path.mkdir(parents=True, exist_ok=True)
-        _db = kuzu.Database(str(db_path))
+        db_dir = Path(KUZU_DB_PATH)
+        db_dir.mkdir(parents=True, exist_ok=True)
+        db_file = db_dir / "graph.kuzu"
+        _db = kuzu.Database(str(db_file))
         _conn = kuzu.Connection(_db)
         _init_schema(_conn)
     return _conn
