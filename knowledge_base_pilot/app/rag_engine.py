@@ -524,7 +524,7 @@ def _get_llm() -> Ollama:
         model=_resolve_llm_model(),
         base_url=OLLAMA_BASE_URL,
         context_window=SETTINGS.llm_num_ctx,
-        additional_kwargs={"num_ctx": SETTINGS.llm_num_ctx},
+        additional_kwargs={"num_ctx": SETTINGS.llm_num_ctx, "keep_alive": "24h"},
         request_timeout=300.0,
     )
 
@@ -534,7 +534,7 @@ def _get_embed_model() -> OllamaEmbedding:
         model_name=EMBED_MODEL,
         base_url=OLLAMA_BASE_URL,
         embed_batch_size=15,
-        ollama_additional_kwargs={"num_ctx": SETTINGS.embedding_num_ctx},
+        ollama_additional_kwargs={"num_ctx": SETTINGS.embedding_num_ctx, "keep_alive": "24h"},
         client_kwargs={"timeout": 120.0},
     )
 
@@ -919,7 +919,7 @@ def retrieve_passages(
         _dense_candidates,
         query_text, source, scope, HYBRID_DENSE_K, threshold,
         user_id, user_role, is_admin,
-        timeout=1.5,
+        timeout=300.0,
     )
     if dense is None:
         dense = []
@@ -934,7 +934,7 @@ def retrieve_passages(
     fused = fused[:HYBRID_FUSION_K]
     t4 = time.perf_counter()
 
-    ranked_children = _with_timeout(_rerank_passages, query_text, fused, timeout=1.5)
+    ranked_children = _with_timeout(_rerank_passages, query_text, fused, timeout=300.0)
     if ranked_children is None:
         ranked_children = _fallback_keyword_rerank(query_text, fused)
     t5 = time.perf_counter()
@@ -946,7 +946,7 @@ def retrieve_passages(
 
         if graph_rag.is_available():
             if scope == "knowledge_base" and _is_global_query(query_text):
-                summary = _with_timeout(graph_rag.community_summary, query_text, timeout=1.5)
+                summary = _with_timeout(graph_rag.community_summary, query_text, timeout=300.0)
                 if summary:
                     parent_passages.insert(
                         0,
@@ -959,7 +959,7 @@ def retrieve_passages(
                         },
                     )
             existing = {p["text"] for p in parent_passages}
-            graph_context = _with_timeout(graph_rag.graph_context, query_text, 3, timeout=1.5)
+            graph_context = _with_timeout(graph_rag.graph_context, query_text, 3, timeout=300.0)
             if graph_context:
                 for gp in graph_context:
                     if gp["text"] not in existing:
