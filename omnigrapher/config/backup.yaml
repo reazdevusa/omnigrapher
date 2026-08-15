@@ -5,7 +5,7 @@ version: "1.0.0"
 # --- Layer 1: Local Backup (Primary) ---
 local:
   enabled: true
-  destination: "{{workspace}}\\omnigrapher\\backups\\local"
+  destination: "D:\Upwork\ai_knowledge_base_suite\omnigrapher\backups\local"
   interval_hours: 6
   include:
     - .devin/sessions
