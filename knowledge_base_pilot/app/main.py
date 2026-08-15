@@ -25,7 +25,7 @@ _STRIPE_TEST_MODE = os.getenv("STRIPE_TEST_MODE", "false").lower() in ("1", "tru
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -783,9 +783,26 @@ def document_chunks(filename: str, user: User = Depends(get_current_user)):
 @app.get("/api/documents/{filename}/raw")
 def document_raw(filename: str, user: User = Depends(get_current_user)):
     filename = unquote(filename)
-    if not get_storage().exists(user.id, filename):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-    return get_storage().send_file(user.id, filename)
+    if get_storage().exists(user.id, filename):
+        return get_storage().send_file(user.id, filename)
+
+    # Best-effort fallback: reconstruct a readable text preview from the index
+    # when the original binary file (e.g. a 200 MB image-PDF) is not stored.
+    file_path = _get_user_document_path(user.id, filename)
+    try:
+        result = _get_rag().get_document_content(file_path, user.id)
+        text = result.get("content", "")
+        if text:
+            return PlainTextResponse(
+                text,
+                headers={
+                    "Content-Disposition": f'inline; filename="{Path(filename).stem}.txt"'
+                },
+            )
+    except Exception:
+        logger.exception("Failed to build text fallback for %s", filename)
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
 
 # ---------------------------------------------------------------------------
