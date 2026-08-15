@@ -887,6 +887,31 @@ def retrieve_passages(
     if user_id is None:
         user_id = owner_id
 
+    # When the user has opened a specific document, retrieve ALL chunks for that
+    # document by document_id instead of depending on keyword/embedding match.
+    # This makes "From This Document" robust for any question ("Summarize",
+    # "What are the key findings?", etc.) and for 1-chunk documents.
+    if scope == "single" and source:
+        document_id = _resolve_document_id_by_source(user_id, source)
+        if document_id is not None:
+            file_path = Path(source)
+            child_chunks, found = _with_timeout(
+                _fetch_chunks_for_file,
+                file_path,
+                user_id,
+                document_id,
+                timeout=300.0,
+            )
+            if found:
+                parent_passages = _fetch_parent_passages(child_chunks)
+                logger.info(
+                    "[LATENCY] single-doc retrieve total=%.2fms document_id=%s results=%d",
+                    (time.perf_counter() - t0) * 1000,
+                    document_id,
+                    len(parent_passages),
+                )
+                return parent_passages[:top_k]
+
     # no_llm: fast keyword-only retrieval, skip Ollama embedding and graph.
     if model == "no_llm":
         collection = _get_knowledge_base_collection()
@@ -1557,17 +1582,47 @@ def index_documents() -> dict:
     }
 
 
-def _fetch_chunks_for_file(file_path: Path, owner_id: int) -> tuple[list[dict], bool]:
-    """Return indexed chunks for a file from ChromaDB, sorted by page/order."""
+def _resolve_document_id_by_source(owner_id: int, filename: str) -> Optional[int]:
+    """Resolve a stable document_id from the SQL Document table."""
+    try:
+        db = create_db_session()
+        try:
+            document = (
+                db.query(Document)
+                .filter(Document.owner_id == owner_id, Document.filename == filename)
+                .first()
+            )
+            return document.id if document else None
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Failed to resolve document_id for owner=%s file=%s", owner_id, filename)
+        return None
+
+
+def _fetch_chunks_for_file(
+    file_path: Path,
+    owner_id: int,
+    document_id: Optional[int] = None,
+) -> tuple[list[dict], bool]:
+    """Return indexed chunks for a file from ChromaDB, sorted by page/order.
+
+    Prefer filtering by ``document_id`` when available so renames and
+    duplicate filenames across users do not break retrieval.
+    """
     try:
         collection = _get_knowledge_base_collection()
-        data = collection.get(
-            where={
+        if document_id is not None:
+            where = {"document_id": {"$eq": document_id}}
+        else:
+            where = {
                 "$and": [
                     {"file_name": {"$eq": file_path.name}},
                     {"owner_id": {"$eq": owner_id}},
                 ]
-            },
+            }
+        data = collection.get(
+            where=where,
             include=["documents", "metadatas"],
             limit=1000,
         )
