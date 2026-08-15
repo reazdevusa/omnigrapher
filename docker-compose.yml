@@ -117,6 +117,8 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - OLLAMA_BASE_URL=http://knowledge-base-ollama:11434
+    volumes:
+      - ./knowledge_base_pilot:/app
     depends_on:
       postgres:
         condition: service_healthy
