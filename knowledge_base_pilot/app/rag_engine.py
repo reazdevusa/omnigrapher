@@ -46,7 +46,7 @@ from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.ollama import OllamaEmbedding
 
 from app.config import get_settings
-from app.database import create_db_session, ParentChunk
+from app.database import create_db_session, ParentChunk, Document as DBDocument
 from app.services.sanitizer import sanitize_and_log
 
 def _with_timeout(fn: Callable[..., Any], *args, timeout: float = 1.5, **kwargs) -> Any:
@@ -1588,8 +1588,8 @@ def _resolve_document_id_by_source(owner_id: int, filename: str) -> Optional[int
         db = create_db_session()
         try:
             document = (
-                db.query(Document)
-                .filter(Document.owner_id == owner_id, Document.filename == filename)
+                db.query(DBDocument)
+                .filter(DBDocument.owner_id == owner_id, DBDocument.filename == filename)
                 .first()
             )
             return document.id if document else None

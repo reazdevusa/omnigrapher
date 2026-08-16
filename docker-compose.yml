@@ -94,6 +94,7 @@ services:
       - OLLAMA_BASE_URL=http://knowledge-base-ollama:11434
       - LLM_MODEL=llama3.2:latest
       - EMBED_MODEL=nomic-embed-text:latest
+      - GRAPH_RAG_ENABLED=false
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +118,7 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - OLLAMA_BASE_URL=http://knowledge-base-ollama:11434
+      - GRAPH_RAG_ENABLED=false
     volumes:
       - ./knowledge_base_pilot:/app
     depends_on:
