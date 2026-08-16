@@ -595,11 +595,17 @@ def _build_index(force: bool = False) -> Optional[VectorStoreIndex]:
     )
 
 
+_index_cache_count: Optional[int] = None
+
+
 def _get_index() -> Optional[VectorStoreIndex]:
-    """Return a cached index, building it if necessary."""
-    global _index_cache
-    if _index_cache is None:
+    """Return a cached index, rebuilding it when the Chroma collection changes."""
+    global _index_cache, _index_cache_count
+    collection = _get_knowledge_base_collection()
+    count = collection.count()
+    if _index_cache is None or _index_cache_count != count:
         _index_cache = _build_index()
+        _index_cache_count = count
     return _index_cache
 
 
@@ -615,6 +621,51 @@ def _tokenize_for_bm25(text: str) -> list[str]:
     return [t for t in tokens if t not in _STOPWORDS]
 
 
+def _normalize_id(value: Any) -> str:
+    """Normalize an owner/user id for comparison, accepting int/str/float/None."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _is_allowed_role(metadata: dict, user_role: Optional[str]) -> bool:
+    """Return True if the chunk explicitly grants access to the user's role."""
+    if not user_role:
+        return False
+    allowed_roles = metadata.get("allowed_roles") or []
+    if isinstance(allowed_roles, str):
+        allowed_roles = [r.strip() for r in allowed_roles.split(",") if r.strip()]
+    return user_role in allowed_roles
+
+
+def _can_access_chunk(
+    metadata: dict,
+    user_id: Optional[int] = None,
+    user_role: Optional[str] = None,
+    is_admin: bool = False,
+) -> bool:
+    """Return True if the chunk is accessible to the requesting user.
+
+    Access is granted when any of the following is true:
+      * the caller is an admin
+      * the chunk is owned by the user
+      * the chunk is public
+      * the chunk explicitly allows the user's role
+    """
+    if is_admin:
+        return True
+    visibility = metadata.get("visibility", "private")
+    if visibility == "public":
+        return True
+    if user_id is not None and _normalize_id(metadata.get("owner_id")) == _normalize_id(user_id):
+        return True
+    if _is_allowed_role(metadata, user_role):
+        return True
+    return False
+
+
 def _chroma_passages(
     source: Optional[str],
     scope: str,
@@ -625,27 +676,12 @@ def _chroma_passages(
     where_document: Optional[dict] = None,
 ) -> list[dict]:
     collection = _get_knowledge_base_collection()
-    where_clauses: list[dict] = []
-    if scope == "single" and source:
-        where_clauses.append({"file_name": source})
-
-    if not is_admin and user_id is not None:
-        auth_or = [
-            {"owner_id": user_id},
-            {"visibility": "public"},
-        ]
-        if user_role:
-            auth_or.append({"allowed_roles": {"$contains": user_role}})
-        where_clauses.append({"$or": auth_or})
-    elif user_id is None:
-        # Unauthenticated users may only see public chunks.
-        where_clauses.append({"visibility": "public"})
-
     where = None
-    if len(where_clauses) == 1:
-        where = where_clauses[0]
-    elif len(where_clauses) > 1:
-        where = {"$and": where_clauses}
+    # Only push source/file-name filters down to ChromaDB.  Auth filtering is
+    # applied in Python because ChromaDB does not support $contains on
+    # metadata lists, and missing allowed_roles keys can break $or clauses.
+    if scope == "single" and source:
+        where = {"file_name": source}
 
     try:
         results = collection.get(
@@ -666,6 +702,8 @@ def _chroma_passages(
     ):
         if metadata is None:
             metadata = {}
+        if not _can_access_chunk(metadata, user_id, user_role, is_admin):
+            continue
         passages.append(
             {
                 "chunk_id": str(chunk_id),
@@ -693,7 +731,9 @@ def _dense_candidates(
     if index is None:
         return []
 
-    retriever = index.as_retriever(similarity_top_k=max(top_k * 4, 20))
+    # Prefetch more candidates so Python-side filters (owner, visibility,
+    # allowed_roles) don't starve the final top_k.
+    retriever = index.as_retriever(similarity_top_k=max(top_k * 10, 50))
     all_nodes = retriever.retrieve(query_text)
     nodes = []
     for node in all_nodes:
@@ -701,13 +741,7 @@ def _dense_candidates(
             continue
         if scope == "single" and source and node.metadata.get("file_name") != source:
             continue
-        if not is_admin and user_id is not None:
-            if (
-                node.metadata.get("owner_id") != user_id
-                and node.metadata.get("visibility") != "public"
-            ):
-                continue
-        elif user_id is None and node.metadata.get("visibility") != "public":
+        if not _can_access_chunk(node.metadata, user_id, user_role, is_admin):
             continue
         nodes.append(node)
         if len(nodes) >= top_k:
@@ -888,7 +922,7 @@ def retrieve_passages(
         user_id = owner_id
 
     # When the user has opened a specific document, retrieve ALL chunks for that
-    # document by document_id instead of depending on keyword/embedding match.
+    # document by sql_document_id instead of depending on keyword/embedding match.
     # This makes "From This Document" robust for any question ("Summarize",
     # "What are the key findings?", etc.) and for 1-chunk documents.
     if scope == "single" and source:
@@ -1466,9 +1500,13 @@ def index_document(
 
     ingestion_id = uuid.uuid4().hex
     allowed_roles = allowed_roles or []
+    sql_document_id = str(document_id)
     for document in documents:
         metadata = {
+            # ``document_id`` is overwritten by LlamaIndex with the ref_doc_id,
+            # so we also store the stable SQL id under a custom key.
             "document_id": document_id,
+            "sql_document_id": sql_document_id,
             "owner_id": owner_id,
             "file_name": file_path.name,
             "ingestion_id": ingestion_id,
@@ -1506,6 +1544,7 @@ def index_document(
     # Ensure per-node metadata is set; ChromaDB's top-level filters depend on these keys.
     for node in child_nodes:
         node.metadata["document_id"] = document_id
+        node.metadata["sql_document_id"] = sql_document_id
         node.metadata["owner_id"] = owner_id
         node.metadata["file_name"] = file_path.name
         node.metadata["ingestion_id"] = ingestion_id
@@ -1607,61 +1646,74 @@ def _fetch_chunks_for_file(
 ) -> tuple[list[dict], bool]:
     """Return indexed chunks for a file from ChromaDB, sorted by page/order.
 
-    Prefer filtering by ``document_id`` when available so renames and
-    duplicate filenames across users do not break retrieval.
+    Prefer filtering by ``sql_document_id`` (the stable SQL document id) when
+    available so renames and duplicate filenames across users do not break
+    retrieval.  Older chunks may not have that key, so we fall back to the
+    original ``file_name`` + ``owner_id`` pair.
     """
-    try:
-        collection = _get_knowledge_base_collection()
-        if document_id is not None:
-            where = {"document_id": {"$eq": document_id}}
-        else:
-            where = {
-                "$and": [
-                    {"file_name": {"$eq": file_path.name}},
-                    {"owner_id": {"$eq": owner_id}},
-                ]
-            }
-        data = collection.get(
-            where=where,
-            include=["documents", "metadatas"],
-            limit=1000,
-        )
-    except Exception:
-        logger.exception("Failed to fetch chunks for %s", file_path.name)
-        return [], False
+    collection = _get_knowledge_base_collection()
 
-    ids = data.get("ids", [])
-    docs = data.get("documents", [])
-    metas = data.get("metadatas", [])
-    if not ids:
-        return [], False
-
-    is_pdf = file_path.suffix.lower() == ".pdf"
-    items = []
-    seen_texts = set()
-    for i, (chunk_id, meta, text) in enumerate(zip(ids, metas, docs)):
-        if meta is None:
-            meta = {}
+    def _try_where(where: dict) -> tuple[list[dict], bool]:
         try:
-            page = int(meta.get("page", 0))
-        except (TypeError, ValueError):
-            page = 0
-        text = text or ""
-        if is_pdf:
-            text = _normalize_pdf_text(text)
-        if not text or text in seen_texts:
-            continue
-        seen_texts.add(text)
-        items.append(
-            {
-                "chunk_id": chunk_id,
-                "page": page,
-                "text": text,
-                "order": i,
-            }
-        )
-    items.sort(key=lambda x: (x["page"], x["order"]))
-    return items, True
+            data = collection.get(
+                where=where,
+                include=["documents", "metadatas"],
+                limit=1000,
+            )
+        except Exception:
+            logger.exception("Failed to fetch chunks for %s", file_path.name)
+            return [], False
+
+        ids = data.get("ids", [])
+        docs = data.get("documents", [])
+        metas = data.get("metadatas", [])
+        if not ids:
+            return [], False
+
+        is_pdf = file_path.suffix.lower() == ".pdf"
+        items = []
+        seen_texts = set()
+        for i, (chunk_id, meta, text) in enumerate(zip(ids, metas, docs)):
+            if meta is None:
+                meta = {}
+            try:
+                page = int(meta.get("page", 0))
+            except (TypeError, ValueError):
+                page = 0
+            text = text or ""
+            if is_pdf:
+                text = _normalize_pdf_text(text)
+            if not text or text in seen_texts:
+                continue
+            seen_texts.add(text)
+            items.append(
+                {
+                    "chunk_id": chunk_id,
+                    "parent_id": meta.get("parent_id"),
+                    "source": file_path.name,
+                    "page": page,
+                    "text": text,
+                    "order": i,
+                }
+            )
+        items.sort(key=lambda x: (x["page"], x["order"]))
+        return items, True
+
+    if document_id is not None:
+        # The stable SQL id is stored in a custom key to avoid colliding with
+        # LlamaIndex's ``document_id`` metadata, which is the LlamaIndex ref id.
+        items, found = _try_where({"sql_document_id": str(document_id)})
+        if found:
+            return items, found
+
+    return _try_where(
+        {
+            "$and": [
+                {"file_name": {"$eq": file_path.name}},
+                {"owner_id": {"$eq": owner_id}},
+            ]
+        }
+    )
 
 
 def _guess_mime_type(file_path: Path) -> str:

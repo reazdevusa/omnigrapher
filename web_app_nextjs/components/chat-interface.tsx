@@ -682,10 +682,6 @@ export function ChatInterface() {
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
       <div className="flex-1 overflow-y-auto p-4 md:p-8">
         <div className="max-w-3xl mx-auto space-y-6">
-          {session?.title && session.title !== "New Chat" && (
-            <h2 className="text-lg font-semibold text-muted-foreground">{session.title}</h2>
-          )}
-
           {session?.messages.length === 0 && (
             <div className="text-center py-12">
               <h1 className="text-3xl font-bold mb-2">What can I help you find?</h1>
