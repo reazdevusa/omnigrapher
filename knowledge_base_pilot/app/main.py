@@ -837,7 +837,7 @@ async def stream_query(
     async def event_generator():
         try:
             source = unquote(request.source) if request.source else None
-            scope = "single" if source else request.scope
+            scope = request.scope
             sync_gen = iter(
                 _get_rag().stream_query_knowledge_base(
                     request.query,

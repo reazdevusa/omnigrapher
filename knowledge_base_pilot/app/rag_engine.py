@@ -914,7 +914,8 @@ def retrieve_passages(
 
     if source:
         source = urllib.parse.unquote(source)
-        scope = "single"
+        if scope != "knowledge_base":
+            scope = "single"
 
     t0 = time.perf_counter()
     threshold = score_threshold if score_threshold is not None else RAG_RELEVANCE_THRESHOLD
