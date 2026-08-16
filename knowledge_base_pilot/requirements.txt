@@ -23,6 +23,7 @@ openai
 anthropic
 tiktoken
 redis==4.6.0
+defusedxml>=0.7.1
 celery
 rank-bm25
 flashrank

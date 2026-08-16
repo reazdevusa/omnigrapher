@@ -23,7 +23,7 @@ _STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 _STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 _STRIPE_TEST_MODE = os.getenv("STRIPE_TEST_MODE", "false").lower() in ("1", "true", "yes")
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -31,6 +31,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import (
+    clear_auth_cookie,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -38,16 +39,21 @@ from app.auth import (
     get_current_user_optional,
     get_password_hash,
     require_admin,
+    set_auth_cookie,
     verify_password,
 )
 from app.config import get_settings
 from app.cost.tracker import get_credit_balance
 from app.database import Document, Feedback, Job, User, WidgetConfig, get_db, init_db
 from app.ingestion_worker import notify_ingestion_worker, start_ingestion_worker, stop_ingestion_worker
+from app.middleware.rate_limiter import llm_rate_limit_dependency
+from app.middleware.security import validate_query
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.rate_limit import enforce_rate_limit
 from app.routers import chat as chat_router
 from app.routers import connectors as connectors_router
 from app.routers import llm as ai_router
+from app.services.rag_service import RAGService
 from app.storage import get_storage
 from app.validators import EMAIL_RE, USERNAME_RE, USERNAME_MAX, USERNAME_MIN
 # Root directory for local file paths (avoid importing rag_engine on startup)
@@ -103,6 +109,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 init_db()
 app.include_router(ai_router.router, prefix="/api")
@@ -396,15 +403,27 @@ def register(payload: UserRegisterRequest, request: Request, db: Session = Depen
 
 
 @app.post("/auth/login", response_model=TokenResponse)
-def login(payload: UserLoginRequest, db: Session = Depends(get_db)):
+def login(
+    payload: UserLoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     username = payload.username.strip().lower()
     user = db.query(User).filter(func.lower(User.username) == username).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
 
+    token_data = {"sub": user.username, "user_id": user.id, "role": user.role}
+    access = create_access_token(token_data)
+    refresh = create_refresh_token(token_data)
+
+    # Set httpOnly Secure SameSite=Strict cookies.
+    set_auth_cookie(response, "access_token", access, 60 * 60 * 24)
+    set_auth_cookie(response, "refresh_token", refresh, 60 * 60 * 24 * 7)
+
     return TokenResponse(
-        access_token=create_access_token({"sub": user.username}),
-        refresh_token=create_refresh_token({"sub": user.username}),
+        access_token=access,
+        refresh_token=refresh,
         username=user.username,
         role=user.role,
         email=user.email,
@@ -414,7 +433,11 @@ def login(payload: UserLoginRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
+def refresh(
+    payload: RefreshRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     token_data = decode_token(payload.refresh_token)
     if not token_data or token_data.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
@@ -424,9 +447,16 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
+    token_data = {"sub": user.username, "user_id": user.id, "role": user.role}
+    access = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
+
+    set_auth_cookie(response, "access_token", access, 60 * 60 * 24)
+    set_auth_cookie(response, "refresh_token", refresh_token, 60 * 60 * 24 * 7)
+
     return TokenResponse(
-        access_token=create_access_token({"sub": user.username}),
-        refresh_token=create_refresh_token({"sub": user.username}),
+        access_token=access,
+        refresh_token=refresh_token,
         username=user.username,
         role=user.role,
         email=user.email,
@@ -812,7 +842,9 @@ def document_raw(filename: str, user: User = Depends(get_current_user)):
 def query_endpoint(
     request: QueryRequest,
     user: User = Depends(get_current_user),
+    _rate: None = Depends(llm_rate_limit_dependency),
 ):
+    validate_query(request.query)
     response = _get_rag().pure_search(
         request.query,
         owner_id=user.id,
@@ -827,6 +859,7 @@ def query_endpoint(
 async def stream_query(
     request: StreamQueryRequest,
     current_user: Optional[User] = Depends(get_current_user_optional),
+    _rate: None = Depends(llm_rate_limit_dependency),
 ):
     def next_token(iterator):
         try:
@@ -836,6 +869,7 @@ async def stream_query(
 
     async def event_generator():
         try:
+            validate_query(request.query)
             source = unquote(request.source) if request.source else None
             scope = request.scope
             sync_gen = iter(

@@ -24,6 +24,7 @@ PLACEHOLDERS = {
     "API_KEY": "<REDACTED_API_KEY>",
     "ACCESS_TOKEN": "<REDACTED_ACCESS_TOKEN>",
     "PASSWORD": "<REDACTED_PASSWORD>",
+    "FULL_NAME": "<REDACTED_NAME>",
 }
 
 # Regex-based recognizers for entities not fully covered by Presidio or when
@@ -41,6 +42,10 @@ _REGEX_PATTERNS = [
     ("API_KEY", re.compile(r"\b(?:api[_-]?key|apikey)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}['\"]?", re.IGNORECASE)),
     ("ACCESS_TOKEN", re.compile(r"\b(?:access[_-]?token|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}['\"]?", re.IGNORECASE)),
     ("PASSWORD", re.compile(r"\b(?:password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{4,}['\"]?", re.IGNORECASE)),
+    # Simplistic full-name recognizer: two or more capitalized words that look
+    # like a person name. Presidio PERSON is preferred, but this catches names
+    # when Presidio is unavailable.
+    ("FULL_NAME", re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b")),
 ]
 
 
@@ -111,6 +116,7 @@ def _presidio_sanitize(text: str, analyzer: "AnalyzerEngine") -> tuple[str, Coun
         "CREDIT_CARD": "CREDIT_CARD",
         "PHONE_NUMBER": "PHONE_NUMBER",
         "EMAIL_ADDRESS": "EMAIL_ADDRESS",
+        "PERSON": "FULL_NAME",
     }
 
     # Anonymize with replacement operators.
@@ -168,3 +174,31 @@ def sanitize_and_log(text: str, context: Optional[str] = None) -> str:
             ", ".join(f"{entity}={count}" for entity, count in counts.items()),
         )
     return sanitized
+
+
+# Control characters / homoglyph / injection cleanup.
+_NULL_BYTES = re.compile(r"\x00+")
+_Unicode_OVERRIDES = re.compile(r"[\u202A-\u202E\u2066-\u2069]+")
+_Unsafe_Controls = re.compile(r"[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]")
+
+
+def defense_in_depth_cleanse(text: str) -> str:
+    """Apply transport-layer and encoding hardening.
+
+    - Strip null bytes.
+    - Remove Unicode bidirectional override characters used for homoglyph attacks.
+    - Remove non-UTF-8 / control characters.
+    - Ensure the string is valid UTF-8.
+    """
+    if not isinstance(text, str):
+        try:
+            text = text.decode("utf-8", errors="replace")
+        except AttributeError:
+            text = str(text)
+
+    text = _NULL_BYTES.sub("", text)
+    text = _Unicode_OVERRIDES.sub("", text)
+    text = _Unsafe_Controls.sub("", text)
+
+    # Re-encode and decode to drop any remaining invalid sequences.
+    return text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")

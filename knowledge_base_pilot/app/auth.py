@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 import bcrypt
@@ -52,12 +52,17 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
+def _cookie_token(request: Optional[Request]) -> Optional[str]:
+    return request.cookies.get("access_token") if request else None
+
+
 def get_current_user(
     token: Optional[str] = Depends(oauth2_scheme),
     access_token: Optional[str] = Query(None),
+    request: Request = Depends(),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
-    token = token or access_token
+    token = token or _cookie_token(request) or access_token
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -91,9 +96,10 @@ def get_current_user(
 def get_current_user_optional(
     token: Optional[str] = Depends(oauth2_scheme),
     access_token: Optional[str] = Query(None),
+    request: Request = Depends(),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
-    token = token or access_token
+    token = token or _cookie_token(request) or access_token
     if not token:
         return None
     payload = decode_token(token)
@@ -112,3 +118,29 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
             detail="Admin access required",
         )
     return user
+
+
+def set_auth_cookie(response: "Response", name: str, token: str, max_age: int) -> None:
+    """Set an httpOnly, Secure (in production), SameSite=Strict auth cookie."""
+    secure = os.getenv("SECURE_COOKIES", "false").lower() in ("1", "true", "yes")
+    response.set_cookie(
+        key=name,
+        value=token,
+        max_age=max_age,
+        httponly=True,
+        secure=secure,
+        samesite="strict",
+        path="/",
+    )
+
+
+def clear_auth_cookie(response: "Response", name: str = "access_token") -> None:
+    """Clear the named auth cookie."""
+    secure = os.getenv("SECURE_COOKIES", "false").lower() in ("1", "true", "yes")
+    response.delete_cookie(
+        key=name,
+        path="/",
+        httponly=True,
+        secure=secure,
+        samesite="strict",
+    )

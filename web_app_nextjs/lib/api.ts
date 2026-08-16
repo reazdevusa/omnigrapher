@@ -12,7 +12,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...options, credentials: "include", signal: controller.signal });
     clearTimeout(timeoutId);
     return res;
   } catch (e) {
@@ -45,6 +45,7 @@ async function fetchJson(path: string, options: RequestInit = {}, token?: string
     try {
       res = await fetch(`${BACKEND_URL}${path}`, {
         ...options,
+        credentials: "include",
         signal: controller.signal,
         headers: {
           ...getHeaders(token),
@@ -194,6 +195,7 @@ export async function uploadDocuments(token: string, files: FileList): Promise<{
   try {
     res = await fetchWithTimeout(`${BACKEND_URL}/api/upload`, {
       method: "POST",
+      credentials: "include",
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -248,6 +250,7 @@ export function getDocumentRawUrl(token: string, filename: string): string {
 
 export async function getDocumentRaw(token: string, filename: string): Promise<Response> {
   const res = await fetch(`${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw`, {
+    credentials: "include",
     headers: getHeaders(token),
   });
   if (!res.ok) {
@@ -509,6 +512,7 @@ export async function* chat(
   try {
     res = await fetch(`${BACKEND_URL}/api/ai/chat`, {
       method: "POST",
+      credentials: "include",
       headers: getHeaders(token),
       body: JSON.stringify({
         model,
@@ -664,7 +668,7 @@ export async function downloadOllamaModel(token: string, modelId: string): Promi
 
 export async function checkBackendConnection() {
   try {
-    const res = await fetch(`${BACKEND_URL}/`, { cache: "no-store" });
+    const res = await fetch(`${BACKEND_URL}/`, { cache: "no-store", credentials: "include" });
     if (!res.ok) return { connected: false, ollama_ok: false };
     return res.json();
   } catch (e) {
