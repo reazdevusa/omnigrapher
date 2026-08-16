@@ -872,7 +872,7 @@ export default function DocumentPage() {
               </Button>
             </div>
             <div className="flex gap-2 flex-wrap mb-2">
-              {["Summarize", "Key findings", "Main concepts"].map((q) => (
+              {["Summarize this document", "What are the key findings?", "Explain the main concepts"].map((q) => (
                 <Button
                   key={q}
                   size="sm"
