@@ -631,9 +631,15 @@ def _normalize_id(value: Any) -> str:
 
 
 def _is_allowed_role(metadata: dict, user_role: Optional[str]) -> bool:
-    """Return True if the chunk explicitly grants access to the user's role."""
+    """Return True if the chunk explicitly grants access to the user's role.
+
+    Checks both the legacy ``allowed_roles`` list and the indexed ``role_*``
+    boolean keys used for ChromaDB pre-filtering.
+    """
     if not user_role:
         return False
+    if metadata.get(f"role_{user_role}") is True:
+        return True
     allowed_roles = metadata.get("allowed_roles") or []
     if isinstance(allowed_roles, str):
         allowed_roles = [r.strip() for r in allowed_roles.split(",") if r.strip()]
@@ -676,12 +682,34 @@ def _chroma_passages(
     where_document: Optional[dict] = None,
 ) -> list[dict]:
     collection = _get_knowledge_base_collection()
-    where = None
-    # Only push source/file-name filters down to ChromaDB.  Auth filtering is
-    # applied in Python because ChromaDB does not support $contains on
-    # metadata lists, and missing allowed_roles keys can break $or clauses.
+    where_clauses: list[dict] = []
+
+    # Source scope is a safe, deterministic filter we can push to ChromaDB.
     if scope == "single" and source:
-        where = {"file_name": source}
+        where_clauses.append({"file_name": source})
+
+    # Push the bulk of the auth filter to ChromaDB for performance, but still
+    # run the same logic in Python as a correctness back-stop.  We use per-role
+    # boolean keys (e.g. ``role_user``) because ChromaDB does not support
+    # ``$contains`` on metadata lists.
+    if not is_admin:
+        if user_id is not None:
+            auth_or = [
+                {"owner_id": user_id},
+                {"visibility": "public"},
+            ]
+            if user_role:
+                auth_or.append({f"role_{user_role}": True})
+            where_clauses.append({"$or": auth_or})
+        else:
+            # Unauthenticated users may only see public chunks.
+            where_clauses.append({"visibility": "public"})
+
+    where = None
+    if len(where_clauses) == 1:
+        where = where_clauses[0]
+    elif len(where_clauses) > 1:
+        where = {"$and": where_clauses}
 
     try:
         results = collection.get(
@@ -1502,6 +1530,7 @@ def index_document(
     ingestion_id = uuid.uuid4().hex
     allowed_roles = allowed_roles or []
     sql_document_id = str(document_id)
+    role_metadata = {f"role_{role}": True for role in allowed_roles}
     for document in documents:
         metadata = {
             # ``document_id`` is overwritten by LlamaIndex with the ref_doc_id,
@@ -1512,6 +1541,7 @@ def index_document(
             "file_name": file_path.name,
             "ingestion_id": ingestion_id,
             "visibility": visibility,
+            **role_metadata,
         }
         if allowed_roles:
             metadata["allowed_roles"] = allowed_roles
@@ -1550,6 +1580,7 @@ def index_document(
         node.metadata["file_name"] = file_path.name
         node.metadata["ingestion_id"] = ingestion_id
         node.metadata["visibility"] = visibility
+        node.metadata.update(role_metadata)
         if allowed_roles:
             node.metadata["allowed_roles"] = allowed_roles
         if tenant_id is not None:
