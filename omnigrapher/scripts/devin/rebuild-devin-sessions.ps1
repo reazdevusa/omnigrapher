@@ -33,8 +33,7 @@ $payload | Out-File -FilePath $workspaceJson -Encoding utf8
 $payload | Out-File -FilePath $metaJson -Encoding utf8
 
 # Place a git-ignored .gitkeep in sessions
-@"# Session landing zone
-"@ | Out-File -FilePath (Join-Path $sessionsDir ".gitkeep") -Encoding utf8
+"# Session landing zone" | Out-File -FilePath (Join-Path $sessionsDir ".gitkeep") -Encoding utf8
 
 Write-Host "Devin local metadata rebuilt at: $devinDir" -ForegroundColor Green
 Write-Host "Next manual step: open Devin Cloud, connect GitHub to reazdevusa/omnigrapher." -ForegroundColor Yellow
