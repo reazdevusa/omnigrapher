@@ -57,9 +57,9 @@ def _cookie_token(request: Optional[Request]) -> Optional[str]:
 
 
 def get_current_user(
+    request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
     access_token: Optional[str] = Query(None),
-    request: Request = Depends(),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
     token = token or _cookie_token(request) or access_token
@@ -94,9 +94,9 @@ def get_current_user(
 
 
 def get_current_user_optional(
+    request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
     access_token: Optional[str] = Query(None),
-    request: Request = Depends(),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
     token = token or _cookie_token(request) or access_token

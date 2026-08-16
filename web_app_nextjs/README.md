@@ -70,7 +70,7 @@ lib/
 
 ## Configuration
 
-Set `NEXT_PUBLIC_API_URL` in `.env.local` to point to your FastAPI backend. The default is `http://127.0.0.1:8001`.
+Set `INTERNAL_API_URL` in `.env.local` to point to your FastAPI backend. The default is `http://127.0.0.1:8001`.
 
 ## Notes
 

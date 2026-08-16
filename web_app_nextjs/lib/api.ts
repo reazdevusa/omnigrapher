@@ -1,7 +1,8 @@
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "http://127.0.0.1:8001";
+  "";
+const BACKEND_DISPLAY = BACKEND_URL || "the backend";
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT_MS = 10000;
 
@@ -68,7 +69,7 @@ async function fetchJson(path: string, options: RequestInit = {}, _token?: strin
   }
 
   if (!res) {
-    throw new Error(`Backend is unreachable at ${BACKEND_URL} after ${MAX_RETRIES} attempts. Please start the API server.`);
+    throw new Error(`Backend is unreachable at ${BACKEND_DISPLAY} after ${MAX_RETRIES} attempts. Please start the API server.`);
   }
 
   if (!res.ok) {
@@ -146,11 +147,14 @@ export async function checkEmailAvailable(
 }
 
 export async function refreshToken(refreshToken?: string | null): Promise<LoginResult> {
-  return fetchJson("/auth/refresh", {
+  const options: RequestInit = {
     method: "POST",
     credentials: "include",
-    body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
-  });
+  };
+  if (refreshToken) {
+    options.body = JSON.stringify({ refresh_token: refreshToken });
+  }
+  return fetchJson("/auth/refresh", options);
 }
 
 export async function getMe(token?: string | null): Promise<User> {
@@ -196,7 +200,7 @@ export async function uploadDocuments(token: string, files: FileList): Promise<{
       body: formData,
     }, REQUEST_TIMEOUT_MS * 3);
   } catch (e) {
-    throw new Error(`Backend is unreachable at ${BACKEND_URL}. Please start the API server.`);
+    throw new Error(`Backend is unreachable at ${BACKEND_DISPLAY}. Please start the API server.`);
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "Upload failed");
@@ -317,7 +321,7 @@ export async function* streamQuery(
       body: JSON.stringify(body),
     }, 0);
   } catch (e) {
-    throw new Error(`Backend is unreachable at ${BACKEND_URL}. Please start the API server.`);
+    throw new Error(`Backend is unreachable at ${BACKEND_DISPLAY}. Please start the API server.`);
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "Stream failed");
@@ -663,7 +667,7 @@ export async function downloadOllamaModel(token: string, modelId: string): Promi
 
 export async function checkBackendConnection() {
   try {
-    const res = await fetch(`${BACKEND_URL}/`, { cache: "no-store", credentials: "include" });
+    const res = await fetch(`${BACKEND_URL || "/health"}`, { cache: "no-store", credentials: "include" });
     if (!res.ok) return { connected: false, ollama_ok: false };
     return res.json();
   } catch (e) {

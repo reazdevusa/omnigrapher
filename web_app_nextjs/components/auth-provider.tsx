@@ -53,6 +53,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await api.getMe(token);
         setUser(me);
+        // Cookie-only auth: the HttpOnly cookie carries the real token. We keep
+        // a non-null placeholder in React state so components that guard on
+        // `token` proceed and the API client sends `credentials: "include"`.
+        setToken("cookie");
+        setRefreshToken("cookie");
       } catch {
         const ok = await refreshAccessToken();
         if (!ok) logout();

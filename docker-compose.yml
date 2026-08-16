@@ -139,7 +139,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8001
+      - INTERNAL_API_URL=http://backend:8001
     depends_on:
       - backend
     volumes:

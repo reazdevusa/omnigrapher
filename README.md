@@ -151,7 +151,7 @@ D:\Upwork\ai_knowledge_base_suite\  (workspace root)
 | Component | File | Key variables |
 |---|---|---|
 | Backend | `knowledge_base_pilot/.env` | `SECRET_KEY`, `DATABASE_URL`, `OLLAMA_BASE_URL`, `LLM_MODEL`, `EMBED_MODEL` |
-| Next.js | `web_app_nextjs/.env.local` | `NEXT_PUBLIC_BACKEND_URL` |
+| Next.js | `web_app_nextjs/.env.local` | `INTERNAL_API_URL` |
 | Streamlit | `web_app/.env` | `API_URL`, `LOG_LEVEL` |
 | Desktop | `desktop_app/.env` | `API_URL`, `LOG_LEVEL` |
 | Backup | `omnigrapher/config/backup.yaml` | Local / external / GitHub / cloud targets |

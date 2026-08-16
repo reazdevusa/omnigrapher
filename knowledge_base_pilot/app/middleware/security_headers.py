@@ -67,6 +67,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+        # The document raw endpoint may be framed by the same-origin frontend
+        # (e.g. PDF fallback in an iframe), so allow same-origin framing.
+        path = request.url.path
+        if path.startswith("/api/documents/") and path.endswith("/raw"):
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Content-Security-Policy"] = CSP_POLICY.replace(
+                "frame-ancestors 'none'", "frame-ancestors 'self'"
+            )
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
         response.headers.setdefault("X-DNS-Prefetch-Control", "off")
