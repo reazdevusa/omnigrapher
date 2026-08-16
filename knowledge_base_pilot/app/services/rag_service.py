@@ -19,7 +19,11 @@ from app.services.sanitizer import sanitize_and_log
 
 logger = logging.getLogger(__name__)
 
-HMAC_KEY = os.getenv("CHUNK_HMAC_KEY", os.getenv("SECRET_KEY", "change-me")).encode("utf-8")
+def _get_hmac_key() -> bytes:
+    from app.config import get_settings
+    return get_settings().rag_signing_key
+
+
 DEFAULT_RELEVANCE_THRESHOLD = 0.75
 DEFAULT_CONTEXT_BUDGET_TOKENS = 3000
 
@@ -72,7 +76,7 @@ class RAGService:
     ) -> None:
         self.relevance_threshold = relevance_threshold
         self.context_budget_tokens = context_budget_tokens
-        self.hmac_key = hmac_key or HMAC_KEY
+        self.hmac_key = hmac_key or _get_hmac_key()
         try:
             self.encoder = tiktoken.get_encoding("cl100k_base")
         except Exception:  # pragma: no cover

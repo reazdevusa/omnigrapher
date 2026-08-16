@@ -30,28 +30,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setToken(null);
     setRefreshToken(null);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("kb_token");
-      localStorage.removeItem("kb_refresh_token");
-      localStorage.removeItem("kb_user");
-    }
     router.push("/");
   }, [router]);
 
   const refreshAccessToken = useCallback(async () => {
-    let rt = typeof window !== "undefined" ? localStorage.getItem("kb_refresh_token") : null;
-    if (!rt || rt === "null" || rt === "undefined") {
-      logout();
-      return false;
-    }
     try {
-      const result = await api.refreshToken(rt);
+      const result = await api.refreshToken();
       setToken(result.access_token);
       setRefreshToken(result.refresh_token);
       setUser({ username: result.username, role: result.role as "user" | "admin", email: result.email, phone: result.phone, display_name: result.display_name });
-      localStorage.setItem("kb_token", result.access_token);
-      localStorage.setItem("kb_refresh_token", result.refresh_token);
-      localStorage.setItem("kb_user", JSON.stringify({ username: result.username, role: result.role, email: result.email, phone: result.phone, display_name: result.display_name }));
       return true;
     } catch (e) {
       logout();
@@ -61,29 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    let storedToken = localStorage.getItem("kb_token");
-    const storedRefresh = localStorage.getItem("kb_refresh_token");
-    const storedUser = localStorage.getItem("kb_user");
-    if (!storedToken || storedToken === "null" || storedToken === "undefined") storedToken = null;
 
     async function restoreSession() {
-      if (!storedToken) {
-        if (storedRefresh) {
-          const ok = await refreshAccessToken();
-          if (ok) {
-            setIsLoading(false);
-            return;
-          }
-        }
-        setIsLoading(false);
-        return;
-      }
       try {
-        await api.getMe(storedToken);
-        const parsedUser = storedUser ? JSON.parse(storedUser) : null;
-        setToken(storedToken);
-        setRefreshToken(storedRefresh);
-        setUser(parsedUser);
+        const me = await api.getMe(token);
+        setUser(me);
       } catch {
         const ok = await refreshAccessToken();
         if (!ok) logout();
@@ -97,21 +66,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Periodic token refresh every 5 minutes
   useEffect(() => {
-    if (!token) return;
+    if (!user) return;
     const interval = setInterval(() => {
       refreshAccessToken();
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [token, refreshAccessToken]);
+  }, [user, refreshAccessToken]);
 
   const login = async (username: string, password: string) => {
     const result = await api.login(username, password);
     setToken(result.access_token);
     setRefreshToken(result.refresh_token);
     setUser({ username: result.username, role: result.role as "user" | "admin", email: result.email, phone: result.phone, display_name: result.display_name });
-    localStorage.setItem("kb_token", result.access_token);
-    localStorage.setItem("kb_refresh_token", result.refresh_token);
-    localStorage.setItem("kb_user", JSON.stringify({ username: result.username, role: result.role, email: result.email, phone: result.phone, display_name: result.display_name }));
     router.push("/");
   };
 
@@ -125,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     token,
     refreshToken,
     isLoading,
-    isAuthenticated: !!user && !!token,
+    isAuthenticated: !!user,
     login,
     register,
     logout,

@@ -26,17 +26,13 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   }
 }
 
-function getHeaders(token?: string | null) {
-  const headers: Record<string, string> = {
+function getHeaders() {
+  return {
     "Content-Type": "application/json",
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  return headers;
 }
 
-async function fetchJson(path: string, options: RequestInit = {}, token?: string | null) {
+async function fetchJson(path: string, options: RequestInit = {}, _token?: string | null) {
   let res: Response | undefined;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -48,7 +44,7 @@ async function fetchJson(path: string, options: RequestInit = {}, token?: string
         credentials: "include",
         signal: controller.signal,
         headers: {
-          ...getHeaders(token),
+          ...getHeaders(),
           ...(options.headers || {}),
         },
       });
@@ -149,18 +145,19 @@ export async function checkEmailAvailable(
   return fetchJson(`/auth/email-available?email=${encodeURIComponent(email)}`);
 }
 
-export async function refreshToken(refreshToken: string): Promise<LoginResult> {
+export async function refreshToken(refreshToken?: string | null): Promise<LoginResult> {
   return fetchJson("/auth/refresh", {
     method: "POST",
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    credentials: "include",
+    body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
   });
 }
 
-export async function getMe(token: string): Promise<User> {
+export async function getMe(token?: string | null): Promise<User> {
   return fetchJson("/auth/me", {}, token);
 }
 
-export async function getProfile(token: string) {
+export async function getProfile(token?: string | null) {
   return fetchJson("/auth/profile", {}, token);
 }
 
@@ -196,9 +193,6 @@ export async function uploadDocuments(token: string, files: FileList): Promise<{
     res = await fetchWithTimeout(`${BACKEND_URL}/api/upload`, {
       method: "POST",
       credentials: "include",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
       body: formData,
     }, REQUEST_TIMEOUT_MS * 3);
   } catch (e) {
@@ -244,14 +238,14 @@ export async function getDocumentChunks(token: string, filename: string) {
   return fetchJson(`/api/documents/${encodeURIComponent(filename)}/chunks`, {}, token);
 }
 
-export function getDocumentRawUrl(token: string, filename: string): string {
-  return `${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw?access_token=${encodeURIComponent(token)}`;
+export function getDocumentRawUrl(_token: string, filename: string): string {
+  return `${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw`;
 }
 
-export async function getDocumentRaw(token: string, filename: string): Promise<Response> {
+export async function getDocumentRaw(_token: string, filename: string): Promise<Response> {
   const res = await fetch(`${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw`, {
     credentials: "include",
-    headers: getHeaders(token),
+    headers: getHeaders(),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "Unknown error");
@@ -318,7 +312,8 @@ export async function* streamQuery(
   try {
     res = await fetchWithTimeout(`${BACKEND_URL}/api/query/stream`, {
       method: "POST",
-      headers: getHeaders(token),
+      credentials: "include",
+      headers: getHeaders(),
       body: JSON.stringify(body),
     }, 0);
   } catch (e) {
@@ -513,7 +508,7 @@ export async function* chat(
     res = await fetch(`${BACKEND_URL}/api/ai/chat`, {
       method: "POST",
       credentials: "include",
-      headers: getHeaders(token),
+      headers: getHeaders(),
       body: JSON.stringify({
         model,
         messages,

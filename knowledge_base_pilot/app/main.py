@@ -434,11 +434,13 @@ def login(
 
 @app.post("/auth/refresh", response_model=TokenResponse)
 def refresh(
-    payload: RefreshRequest,
     response: Response,
+    request: Request,
+    payload: Optional[RefreshRequest] = None,
     db: Session = Depends(get_db),
 ):
-    token_data = decode_token(payload.refresh_token)
+    refresh_token = (payload.refresh_token if payload else None) or request.cookies.get("refresh_token") or ""
+    token_data = decode_token(refresh_token)
     if not token_data or token_data.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 

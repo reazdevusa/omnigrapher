@@ -86,6 +86,50 @@ def _detect_vram_gb() -> Optional[float]:
         return None
 
 
+def _is_production() -> bool:
+    env = os.getenv("ENV", os.getenv("NODE_ENV", "development")).lower()
+    return env in ("production", "prod")
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+def _secure_cookies() -> bool:
+    """Return True when auth cookies should be Secure (production default True)."""
+    if _is_production():
+        # In production, Secure is mandatory; only an explicit opt-out can disable.
+        return _bool_env("SECURE_COOKIES", True)
+    # Local HTTP development default.
+    return _bool_env("SECURE_COOKIES", False)
+
+
+def _rag_signing_key() -> bytes:
+    """Return the chunk HMAC signing key, raising in production if the default is used."""
+    default_key = "change-me-in-production"
+    key = os.getenv("CHUNK_HMAC_KEY", default_key)
+    if _is_production() and key == default_key:
+        raise RuntimeError(
+            "Insecure default CHUNK_HMAC_KEY detected in production. "
+            "Set a strong, randomly generated CHUNK_HMAC_KEY environment variable."
+        )
+    if not key:
+        raise ValueError("CHUNK_HMAC_KEY cannot be empty.")
+    return key.encode("utf-8")
+
+
+def _redis_url() -> str:
+    """Return the Redis URL, defaulting to localhost for dev and logging fallback."""
+    value = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    if not value.strip():
+        logger.warning("REDIS_URL is empty; using in-memory rate-limit fallback.")
+        return ""
+    return value
+
+
 def _context_limits(system_ram_gb: float, vram_gb: Optional[float]) -> tuple[int, int]:
     if vram_gb is not None:
         if vram_gb <= 6:
@@ -115,6 +159,9 @@ class Settings:
     worker_poll_seconds: int
     ocr_min_text_chars: int
     max_upload_mb: int
+    secure_cookies: bool
+    rag_signing_key: bytes
+    redis_url: str
 
 
 @lru_cache(maxsize=1)
@@ -138,6 +185,9 @@ def get_settings() -> Settings:
         worker_poll_seconds=_positive_int("WORKER_POLL_SECONDS", 2),
         ocr_min_text_chars=_positive_int("OCR_MIN_TEXT_CHARS", 40),
         max_upload_mb=_positive_int("MAX_UPLOAD_MB", 250),
+        secure_cookies=_secure_cookies(),
+        rag_signing_key=_rag_signing_key(),
+        redis_url=_redis_url(),
     )
     hardware = f"{vram_gb:g}GB VRAM" if vram_gb is not None else f"{system_ram_gb:g}GB RAM (CPU)"
     logger.info(

@@ -120,15 +120,23 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def _cookie_secure() -> bool:
+    """Return the Secure cookie flag based on settings and ENV."""
+    try:
+        from app.config import get_settings
+        return get_settings().secure_cookies
+    except Exception:
+        return os.getenv("SECURE_COOKIES", "false").lower() in ("1", "true", "yes")
+
+
 def set_auth_cookie(response: "Response", name: str, token: str, max_age: int) -> None:
     """Set an httpOnly, Secure (in production), SameSite=Strict auth cookie."""
-    secure = os.getenv("SECURE_COOKIES", "false").lower() in ("1", "true", "yes")
     response.set_cookie(
         key=name,
         value=token,
         max_age=max_age,
         httponly=True,
-        secure=secure,
+        secure=_cookie_secure(),
         samesite="strict",
         path="/",
     )
@@ -136,11 +144,10 @@ def set_auth_cookie(response: "Response", name: str, token: str, max_age: int) -
 
 def clear_auth_cookie(response: "Response", name: str = "access_token") -> None:
     """Clear the named auth cookie."""
-    secure = os.getenv("SECURE_COOKIES", "false").lower() in ("1", "true", "yes")
     response.delete_cookie(
         key=name,
         path="/",
         httponly=True,
-        secure=secure,
+        secure=_cookie_secure(),
         samesite="strict",
     )
