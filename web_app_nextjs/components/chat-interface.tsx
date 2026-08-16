@@ -650,10 +650,10 @@ export function ChatInterface() {
   };
 
   const exampleQueries = [
-    "What technologies are used in this pilot stack?",
-    "When was the project kickoff date?",
-    "What is the purpose of this knowledge base?",
-    "How does the RAG system work?",
+    "Ask anything about your documents...",
+    "Summarize the key points",
+    "What are the main findings?",
+    "Explain the important concepts",
   ];
 
   if (!mounted) {
