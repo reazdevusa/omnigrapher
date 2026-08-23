@@ -874,6 +874,12 @@ async def stream_query(
             validate_query(request.query)
             source = unquote(request.source) if request.source else None
             scope = request.scope
+
+            # Require authentication for document-scoped queries
+            if source and not current_user:
+                yield 'data: {"type": "error", "error": "Authentication required. Please log in again."}\n\n'
+                return
+
             sync_gen = iter(
                 _get_rag().stream_query_knowledge_base(
                     request.query,

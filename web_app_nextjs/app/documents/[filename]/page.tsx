@@ -49,7 +49,7 @@ import {
 import Link from "next/link";
 
 type Citation = { page: number; chunk_id: string; source: string };
-type Message = { role: "user" | "assistant"; content: string; citations?: Citation[]; mode?: "document" | "assistant" };
+type Message = { role: "user" | "assistant"; content: string; citations?: Citation[]; mode?: "document" | "assistant"; timestamp?: number };
 
 function formatMarkdown(text: string): string {
   return text
@@ -455,8 +455,8 @@ export default function DocumentPage() {
     const title = userMsg.length > 40 ? userMsg.slice(0, 40) + "…" : userMsg;
     setSessionTitle(title);
 
-    const userMessage: Message = { role: "user", content: userMsg, mode };
-    const assistantMessage: Message = { role: "assistant", content: "", citations: [], mode };
+    const userMessage: Message = { role: "user", content: userMsg, mode, timestamp: Date.now() };
+    const assistantMessage: Message = { role: "assistant", content: "", citations: [], mode, timestamp: Date.now() };
     const updatedMessages: Message[] = [...messages, userMessage, assistantMessage];
     setMessages(updatedMessages);
     setIsStreaming(true);
@@ -797,6 +797,11 @@ export default function DocumentPage() {
                     <div className="flex items-center gap-2 mb-1">
                       {msg.role === "assistant" ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}
                       <span className="text-xs font-medium capitalize">{msg.role}</span>
+                      {msg.timestamp && (
+                        <span className="text-[10px] opacity-60 ml-auto">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
                     </div>
                     {msg.role === "assistant" ? (
                       <AssistantContent content={msg.content} onJumpPage={jumpToPage} filename={filename} />

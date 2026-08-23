@@ -16,6 +16,7 @@ export type Message = {
   model?: string;
   feedback_rating?: "up" | "down" | null;
   citations?: Citation[];
+  timestamp?: number;
 };
 
 export type ChatSession = {

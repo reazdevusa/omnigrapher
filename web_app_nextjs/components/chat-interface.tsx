@@ -438,6 +438,7 @@ export function ChatInterface() {
       role: "user",
       content: textToUse.trim(),
       mode,
+      timestamp: Date.now(),
     };
     const assistantMessage: Message = {
       id: `msg_${Date.now()}_assistant`,
@@ -445,6 +446,7 @@ export function ChatInterface() {
       content: "",
       mode,
       model: modelToUse,
+      timestamp: Date.now(),
     };
 
     const updatedMessages = [...session.messages, userMessage, assistantMessage];
@@ -713,6 +715,11 @@ export function ChatInterface() {
                     )
                   ) : (
                     <><FileText className="h-4 w-4" /><span className="text-xs font-medium opacity-80">You</span></>
+                  )}
+                  {msg.timestamp && (
+                    <span className="text-[10px] opacity-50 ml-auto">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
                   )}
                 </div>
 
