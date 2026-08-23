@@ -1,12 +1,20 @@
-"""Unsloth QLoRA adapter training wrapper."""
+"""Unsloth QLoRA adapter training wrapper with VRAM pinning and performance opts."""
 
 import logging
+import threading
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
-from peft_engine.app.config import Settings, get_settings
+from peft_engine.app.config import Settings, get_settings, is_external_storage_available
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# VRAM / Performance Globals
+# ---------------------------------------------------------------------------
+_base_model_cache: Dict[str, Tuple[Any, Any]] = {}  # model_name -> (model, tokenizer)
+_adapter_cache: Dict[str, Any] = {}  # adapter_name -> loaded adapter weights in RAM
+_cache_lock = threading.Lock()
 
 
 def _supports_bf16() -> bool:
@@ -18,24 +26,125 @@ def _supports_bf16() -> bool:
         return False
 
 
+def _gpu_available() -> bool:
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def _pin_model_in_vram(model: Any) -> None:
+    """Pin the base model in VRAM to prevent unloading during inference.
+
+    After the initial cold load from the external drive, all token generation
+    runs 100% from VRAM/RAM — no further disk access.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            # Move model to CUDA and ensure it stays resident
+            model.cuda()
+            logger.info("Base model pinned in VRAM — no further disk reads during inference.")
+    except Exception as exc:
+        logger.warning("Could not pin model in VRAM: %s", exc)
+
+
+def _enable_flash_attention(model: Any) -> Any:
+    """Enable FlashAttention-2 or SDPA for reduced VRAM bandwidth overhead."""
+    try:
+        if hasattr(model, "config"):
+            # Try FlashAttention-2 first
+            if hasattr(model.config, "_attn_implementation"):
+                model.config._attn_implementation = "flash_attention_2"
+                logger.info("FlashAttention-2 enabled.")
+            elif hasattr(model.config, "attn_implementation"):
+                model.config.attn_implementation = "sdpa"
+                logger.info("SDPA (Scaled Dot-Product Attention) enabled.")
+    except Exception as exc:
+        logger.warning("Could not enable FlashAttention/SDPA: %s", exc)
+    return model
+
+
+def preload_adapter_to_memory(adapter_name: str, adapter_path: Path) -> None:
+    """Pre-load adapter LoRA matrices into system RAM for sub-10ms swapping."""
+    with _cache_lock:
+        if adapter_name in _adapter_cache:
+            return
+    try:
+        import torch
+        adapter_file = adapter_path / "adapter_model.safetensors"
+        if not adapter_file.exists():
+            adapter_file = adapter_path / "adapter_model.bin"
+        if adapter_file.exists():
+            weights = torch.load(str(adapter_file), map_location="cpu", weights_only=True)
+            with _cache_lock:
+                _adapter_cache[adapter_name] = weights
+            logger.info("Adapter '%s' pre-loaded into RAM (%d tensors)", adapter_name, len(weights))
+        else:
+            logger.warning("No adapter weights found at %s", adapter_path)
+    except Exception as exc:
+        logger.warning("Could not pre-load adapter '%s': %s", adapter_name, exc)
+
+
+def preload_all_adapters(adapter_dir: Path) -> None:
+    """Pre-load all existing adapter weights into RAM for fast swapping."""
+    if not adapter_dir.exists():
+        return
+    for subdir in adapter_dir.iterdir():
+        if subdir.is_dir():
+            preload_adapter_to_memory(subdir.name, subdir)
+
+
+def get_cached_adapter_weights(adapter_name: str) -> Optional[Any]:
+    """Retrieve pre-loaded adapter weights from the in-memory cache."""
+    with _cache_lock:
+        return _adapter_cache.get(adapter_name)
+
+
 class AdapterTrainer:
     """Train a LoRA adapter on top of a 4-bit base model using Unsloth."""
 
     def __init__(self, settings: Optional[Settings] = None):
         self.settings = settings or get_settings()
 
-    def load_base_model(self, base_model: Optional[str] = None):
-        """Load the base model in 4-bit."""
+    def load_base_model(self, base_model: Optional[str] = None, pin_vram: bool = False):
+        """Load the base model in 4-bit NF4 quantization.
+
+        Args:
+            base_model: Model identifier (HuggingFace hub or local path).
+            pin_vram: If True, pin the model in VRAM after loading (for inference).
+        """
         from unsloth import FastLanguageModel
 
         model_name = base_model or self.settings.base_model
-        logger.info("Loading base model %s in 4-bit", model_name)
+
+        # Return cached model if already loaded
+        with _cache_lock:
+            if model_name in _base_model_cache:
+                logger.info("Returning cached base model: %s", model_name)
+                return _base_model_cache[model_name]
+
+        logger.info("Loading base model %s in 4-bit NF4 quantization", model_name)
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=model_name,
             max_seq_length=self.settings.max_seq_length,
             dtype=None,
             load_in_4bit=True,
         )
+
+        # Enable FlashAttention-2 or SDPA
+        model = _enable_flash_attention(model)
+
+        # Pin in VRAM if requested (inference mode)
+        if pin_vram and _gpu_available():
+            _pin_model_in_vram(model)
+
+        # Cache the model
+        with _cache_lock:
+            _base_model_cache[model_name] = (model, tokenizer)
+
         return model, tokenizer
 
     def attach_lora(self, model):

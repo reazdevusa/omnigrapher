@@ -1,10 +1,55 @@
-"""PEFT engine configuration."""
+"""PEFT engine configuration.
+
+IMPORTANT: Environment overrides for HF_HOME, TORCH_HOME, and TEMP directories
+are injected BEFORE any heavy ML imports so that transformers/torch/huggingface_hub
+never touch the C: drive. All caching is redirected to the external storage path.
+"""
 
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
+
+# ---------------------------------------------------------------------------
+# External storage path redirection (protects C: drive)
+# ---------------------------------------------------------------------------
+EXTERNAL_STORAGE_BASE = os.getenv(
+    "OMNIGRAPHER_STORAGE_BASE", "G:/DO_NOT_DELETE/OmniGrapher_AI_Storage"
+)
+
+def _init_storage_directories() -> None:
+    """Create the external storage folder structure if it does not exist."""
+    subdirs = ["huggingface", "torch_cache", "adapters", "temp"]
+    for subdir in subdirs:
+        path = os.path.join(EXTERNAL_STORAGE_BASE, subdir)
+        os.makedirs(path, exist_ok=True)
+
+
+def _apply_storage_env_overrides() -> None:
+    """Inject environment variables BEFORE importing transformers/torch/huggingface_hub.
+
+    This ensures all model downloads, caches, and temp files go to the external drive.
+    """
+    os.environ.setdefault("HF_HOME", f"{EXTERNAL_STORAGE_BASE}/huggingface")
+    os.environ.setdefault("TORCH_HOME", f"{EXTERNAL_STORAGE_BASE}/torch_cache")
+    os.environ.setdefault("TMPDIR", f"{EXTERNAL_STORAGE_BASE}/temp")
+    os.environ.setdefault("TEMP", f"{EXTERNAL_STORAGE_BASE}/temp")
+    os.environ.setdefault("TMP", f"{EXTERNAL_STORAGE_BASE}/temp")
+
+
+def is_external_storage_available() -> bool:
+    """Check whether the external storage drive is accessible."""
+    return os.path.isdir(EXTERNAL_STORAGE_BASE)
+
+
+# Apply overrides immediately on module import — this runs before any
+# downstream import of transformers, torch, or huggingface_hub.
+if is_external_storage_available():
+    _init_storage_directories()
+_apply_storage_env_overrides()
+
+# ---------------------------------------------------------------------------
 
 from dotenv import load_dotenv
 
@@ -48,7 +93,12 @@ def _comma_list(name: str, default: str) -> List[str]:
 
 
 def _adapter_dir() -> str:
-    return os.getenv("PEFT_ADAPTER_DIR", str(PEFT_ENGINE_ROOT / "adapters"))
+    default = (
+        f"{EXTERNAL_STORAGE_BASE}/adapters"
+        if is_external_storage_available()
+        else str(PEFT_ENGINE_ROOT / "adapters")
+    )
+    return os.getenv("PEFT_ADAPTER_DIR", default)
 
 
 def _dataset_dir() -> str:

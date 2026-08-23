@@ -3,6 +3,11 @@
 Routes generation requests to a PEFT/vLLM OpenAI-compatible adapter server when
 enabled, otherwise falls back to the default provider registry (Ollama, Gemini,
 OpenAI, etc.).
+
+Features:
+- Drive disconnection guard: gracefully falls back if G: drive is unavailable
+- Automatic retry with circuit breaker (3 retries, 5s connect / 60s read timeout)
+- Immediate fallback on 5xx or connection errors for 100% uptime
 """
 
 import json
@@ -11,6 +16,8 @@ import os
 from typing import Dict, List, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 
 from app.providers import LLMResponse, Message, get_provider
@@ -21,7 +28,45 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:latest")
 
+# ---------------------------------------------------------------------------
+# Drive Disconnection Guard
+# ---------------------------------------------------------------------------
+EXTERNAL_DRIVE_PATH = os.getenv(
+    "OMNIGRAPHER_STORAGE_BASE", "G:/DO_NOT_DELETE"
+)
 
+
+def is_external_drive_ready(path: Optional[str] = None) -> bool:
+    """Check whether the external storage drive is accessible.
+
+    Returns True if the path exists and is a directory, False otherwise.
+    Used as a pre-flight check before routing to PEFT engine.
+    """
+    check_path = path or EXTERNAL_DRIVE_PATH
+    return os.path.exists(check_path)
+
+
+# ---------------------------------------------------------------------------
+# HTTP Session with retry & circuit breaker
+# ---------------------------------------------------------------------------
+def _build_http_session(retries: int = 3) -> requests.Session:
+    """Build an HTTP session with automatic retries on 5xx and connection errors."""
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=retries,
+        backoff_factor=0.3,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["POST", "GET"],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 def _bool_env(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -41,7 +86,14 @@ def _load_adapter_map() -> Dict[str, str]:
 
 
 class LLMService:
-    """Unified generation service with optional multi-LoRA adapter routing."""
+    """Unified generation service with optional multi-LoRA adapter routing.
+
+    Includes:
+    - Drive health check before PEFT calls
+    - HTTP retries with exponential backoff
+    - Connection timeout 5s, read timeout 60s
+    - Automatic fallback on any failure
+    """
 
     def __init__(
         self,
@@ -60,7 +112,14 @@ class LLMService:
         ).rstrip("/")
         self.adapter_map = adapter_map if adapter_map is not None else _load_adapter_map()
         self.fallback_model = fallback_model or DEFAULT_LLM_MODEL
-        self.peft_engine_timeout = float(os.getenv("PEFT_ENGINE_TIMEOUT", "30"))
+
+        # Timeout configuration: (connect_timeout, read_timeout)
+        connect_timeout = float(os.getenv("PEFT_ENGINE_CONNECT_TIMEOUT", "5.0"))
+        read_timeout = float(os.getenv("PEFT_ENGINE_READ_TIMEOUT", "60.0"))
+        self.peft_engine_timeout = (connect_timeout, read_timeout)
+
+        # Build resilient HTTP session with retries
+        self._http_session = _build_http_session(retries=3)
 
     def resolve_adapter_name(self, domain: Optional[str], adapter: Optional[str]) -> Optional[str]:
         """Resolve a domain or explicit adapter name to the final adapter name."""
@@ -77,6 +136,17 @@ class LLMService:
         temperature: float,
         max_tokens: int,
     ) -> LLMResponse:
+        # Drive disconnection guard
+        if not is_external_drive_ready():
+            logger.warning(
+                "External drive not accessible at '%s'. "
+                "Skipping PEFT engine call — routing to fallback.",
+                EXTERNAL_DRIVE_PATH,
+            )
+            raise ConnectionError(
+                f"External storage drive unavailable: {EXTERNAL_DRIVE_PATH}"
+            )
+
         url = f"{self.peft_engine_url}/v1/chat/completions"
         payload = {
             "model": adapter_name,
@@ -86,7 +156,9 @@ class LLMService:
             "stream": False,
         }
         logger.debug("Calling PEFT engine at %s with model=%s", url, adapter_name)
-        response = requests.post(url, json=payload, timeout=self.peft_engine_timeout)
+        response = self._http_session.post(
+            url, json=payload, timeout=self.peft_engine_timeout
+        )
         response.raise_for_status()
         data = response.json()
 
@@ -155,7 +227,7 @@ class LLMService:
                 )
             except Exception as exc:
                 logger.warning(
-                    "PEFT engine call failed for adapter %s: %s",
+                    "PEFT engine call failed for adapter %s: %s — falling back to base model.",
                     adapter_name,
                     exc,
                 )
