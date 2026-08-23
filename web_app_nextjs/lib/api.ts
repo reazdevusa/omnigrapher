@@ -265,6 +265,7 @@ export type ChatHistoryMessage = {
   content: string;
   mode?: "document" | "assistant";
   citations?: { page: number; chunk_id: string; source: string }[];
+  timestamp?: number;
 };
 
 export type ChatHistorySession = {

@@ -464,7 +464,7 @@ export default function DocumentPage() {
     setMessages(updatedMessages);
     setIsStreaming(true);
 
-    const history = updatedMessages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })) as api.ChatMessage[];
+    const history = updatedMessages.slice(0, -1).slice(-4).map((m) => ({ role: m.role, content: m.content })) as api.ChatMessage[];
     const source = mode === "document" && filename ? decodeURIComponent(filename) : undefined;
     const modelForSend =
       models.find((m) => m.id === selectedModel && m.allowed && m.downloaded !== false)?.id ||

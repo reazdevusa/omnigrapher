@@ -18,6 +18,7 @@ class ChatMessage(BaseModel):
     content: str
     mode: Optional[str] = None
     citations: Optional[List[Dict[str, Any]]] = None
+    timestamp: Optional[int] = None
 
 
 class ChatSessionPayload(BaseModel):

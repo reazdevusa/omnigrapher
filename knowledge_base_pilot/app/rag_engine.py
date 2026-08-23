@@ -1210,10 +1210,18 @@ def _stream_rag(query_text: str, passages: list[dict], history: Optional[list[di
     context = _format_context_for_llm(passages, top_k=3, max_chars=1000, include_sources=False)
     system = RAG_SYNTHESIS_PROMPT.format(context_str=context, query_str=query_text)
     messages = [{"role": "system", "content": system}]
-    for message in history or []:
+
+    # Only include the last 4 history messages (2 turns) and truncate long
+    # responses so the prompt fits within the local model's context window.
+    MAX_HISTORY_MSGS = 4
+    MAX_HISTORY_CHARS = 500
+    recent_history = (history or [])[-MAX_HISTORY_MSGS:]
+    for message in recent_history:
         role = message.get("role")
         content = message.get("content")
         if role in {"user", "assistant", "system"} and isinstance(content, str) and content.strip():
+            if role == "assistant" and len(content) > MAX_HISTORY_CHARS:
+                content = content[:MAX_HISTORY_CHARS] + "..."
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": query_text})
 
@@ -1353,11 +1361,16 @@ def _stream_model(
 
 
 def _stream_assistant(query_text: str, history: Optional[list[dict]] = None) -> Iterable[str]:
+    MAX_HISTORY_MSGS = 6
+    MAX_HISTORY_CHARS = 500
     messages = []
-    for message in history or []:
+    recent_history = (history or [])[-MAX_HISTORY_MSGS:]
+    for message in recent_history:
         role = message.get("role")
         content = message.get("content")
         if role in {"user", "assistant", "system"} and isinstance(content, str) and content.strip():
+            if role == "assistant" and len(content) > MAX_HISTORY_CHARS:
+                content = content[:MAX_HISTORY_CHARS] + "..."
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": query_text})
 
