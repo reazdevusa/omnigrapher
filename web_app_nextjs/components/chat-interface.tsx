@@ -160,6 +160,9 @@ const ChatMessageContent = memo(function ChatMessageContent({
 
 function toUserError(raw: string, model: string = "selected model"): string {
   const lower = raw.toLowerCase();
+  if (lower.includes("authentication required") || lower.includes("please log in")) {
+    return `Your session has expired. Please refresh the page or log in again.`;
+  }
   if (lower.includes("quota") || lower.includes("insufficient_quota") || lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
     return `The selected model (${model}) has exceeded its API quota. Switch to a free model or add a payment method.`;
   }

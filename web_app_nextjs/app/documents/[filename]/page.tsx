@@ -66,6 +66,9 @@ function formatMarkdown(text: string): string {
 
 function toUserError(raw: string, model: string = "selected model"): string {
   const lower = raw.toLowerCase();
+  if (lower.includes("authentication required") || lower.includes("please log in")) {
+    return `Your session has expired. Please refresh the page or log in again.`;
+  }
   if (lower.includes("quota") || lower.includes("insufficient_quota") || lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
     return `The selected model (${model}) has exceeded its API quota. Switch to a free model or add a payment method.`;
   }
@@ -134,7 +137,7 @@ function AssistantContent({
 }
 
 export default function DocumentPage() {
-  const { token } = useAuth();
+  const { token, refreshAccessToken } = useAuth();
   const params = useParams();
   const searchParams = useSearchParams();
   const filename = decodeURIComponent(params.filename as string);
@@ -497,9 +500,34 @@ export default function DocumentPage() {
         }
       }
     } catch (e: any) {
-      const friendly = toUserError(e.message || "", modelForSend);
+      const msg = e.message || "";
+      // Auto-retry once after refreshing auth token on session expiry
+      if (/authentication required|please log in/i.test(msg)) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          try {
+            for await (const event of api.streamQuery(token, userMsg, mode, history, source, modelForSend, scope)) {
+              if (event.type === "token") {
+                accumulated += event.token;
+                finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: accumulated, citations: currentCitations }];
+                setMessages(finalMessages);
+              } else if (event.type === "citation") {
+                currentCitations = [...currentCitations, { page: event.page, chunk_id: event.chunk_id, source: event.source }];
+                finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: accumulated, citations: currentCitations }];
+                setMessages(finalMessages);
+              }
+            }
+            // Retry succeeded, skip error handling below
+            setIsStreaming(false);
+            if (activeSessionId) await saveSession(activeSessionId, finalMessages, title);
+            try { window.dispatchEvent(new CustomEvent("credits-updated")); } catch {}
+            return;
+          } catch { /* retry also failed, fall through to error */ }
+        }
+      }
+      const friendly = toUserError(msg, modelForSend);
       toast.error(friendly);
-      if (e?.message && /quota|insufficient|429|rate limit|too many requests/i.test(e.message)) {
+      if (/quota|insufficient|429|rate limit|too many requests/i.test(msg)) {
         setFallback({ reason: "quota", message: friendly, model: modelForSend });
       }
       finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: "Sorry, I could not process your request.", citations: currentCitations }];

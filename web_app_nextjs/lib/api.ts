@@ -339,10 +339,15 @@ export async function* streamQuery(
   let pending = "";
   let receivedToken = false;
   let streamFinished = false;
+  const STREAM_READ_TIMEOUT_MS = 90_000; // 90s max wait between chunks
 
   try {
     while (!streamFinished) {
-      const { done, value } = await reader.read();
+      const readPromise = reader.read();
+      const timeoutPromise = new Promise<{ done: true; value: undefined }>((_, reject) =>
+        setTimeout(() => reject(new Error("Stream read timed out — no data received for 90 seconds.")), STREAM_READ_TIMEOUT_MS)
+      );
+      const { done, value } = await Promise.race([readPromise, timeoutPromise]);
       pending += value ? decoder.decode(value, { stream: !done }) : decoder.decode();
       pending = pending.replace(/\r\n/g, "\n");
 
