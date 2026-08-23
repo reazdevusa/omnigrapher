@@ -40,7 +40,10 @@ def _apply_storage_env_overrides() -> None:
 
 def is_external_storage_available() -> bool:
     """Check whether the external storage drive is accessible."""
-    return os.path.isdir(EXTERNAL_STORAGE_BASE)
+    # Check the parent directory (e.g. G:/DO_NOT_DELETE) since the storage
+    # subfolder may not have been created yet on first run.
+    parent = os.path.dirname(EXTERNAL_STORAGE_BASE)
+    return os.path.isdir(parent) if parent else os.path.isdir(EXTERNAL_STORAGE_BASE)
 
 
 # Apply overrides immediately on module import — this runs before any
