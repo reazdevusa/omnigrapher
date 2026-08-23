@@ -1,0 +1,27 @@
+# Dependencies (installed inside container)
+node_modules
+
+# Build output
+.next
+out
+
+# Version control
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+.env.local
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# TypeScript build info
+tsconfig.tsbuildinfo
