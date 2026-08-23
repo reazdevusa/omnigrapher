@@ -57,6 +57,11 @@ embeddings/
 *.gguf
 *.bin
 
+# PEFT engine runtime artifacts
+peft_engine/.env
+peft_engine/adapters/
+peft_engine/outputs/
+
 # OS
 Thumbs.db
 .DS_Store
