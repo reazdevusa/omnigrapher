@@ -962,7 +962,15 @@ def submit_feedback(
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
-def _queue_index_job(db: Session, owner_id: int, job_id: int) -> None:
+def _queue_index_job(db: Session, owner_id: int, job_id: int, failed_only: bool = False) -> None:
+    """Queue documents for (re-)ingestion.
+
+    Args:
+        failed_only: If True, only retry documents with status 'failed' or
+                     'pending' (i.e. not yet indexed). Already-indexed documents
+                     are left untouched. This is used by the "Sync" action.
+                     If False, re-index ALL documents (used by "Rebuild").
+    """
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         return
@@ -971,8 +979,13 @@ def _queue_index_job(db: Session, owner_id: int, job_id: int) -> None:
     try:
         documents = db.query(Document).filter(Document.owner_id == owner_id).all()
         queued = 0
+        skipped = 0
         for document in documents:
             if document.status == "processing":
+                continue
+            # In sync mode, skip already-indexed documents
+            if failed_only and document.status in ("indexed", "completed"):
+                skipped += 1
                 continue
             file_path = _get_user_document_path(owner_id, document.filename)
             if not file_path.exists():
@@ -997,7 +1010,7 @@ def _queue_index_job(db: Session, owner_id: int, job_id: int) -> None:
             )
             queued += 1
         job.status = "completed"
-        job.result = json.dumps({"queued_documents": queued})
+        job.result = json.dumps({"queued_documents": queued, "skipped_documents": skipped})
         db.commit()
         if queued:
             notify_ingestion_worker()
@@ -1018,11 +1031,12 @@ def _queue_index_job(db: Session, owner_id: int, job_id: int) -> None:
 
 @app.post("/api/jobs/sync-index", response_model=JobResponse)
 def sync_index_job(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sync: only retry failed/pending documents; indexed docs are untouched."""
     job = Job(owner_id=user.id, job_type="sync-index", status="pending")
     db.add(job)
     db.commit()
     db.refresh(job)
-    _queue_index_job(db, user.id, job.id)
+    _queue_index_job(db, user.id, job.id, failed_only=True)
     return JobResponse(
         id=job.id,
         job_type=job.job_type,
@@ -1035,11 +1049,12 @@ def sync_index_job(user: User = Depends(get_current_user), db: Session = Depends
 
 @app.post("/api/jobs/rebuild-index", response_model=JobResponse)
 def rebuild_index_job(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Rebuild: re-index ALL documents regardless of current status."""
     job = Job(owner_id=user.id, job_type="rebuild-index", status="pending")
     db.add(job)
     db.commit()
     db.refresh(job)
-    _queue_index_job(db, user.id, job.id)
+    _queue_index_job(db, user.id, job.id, failed_only=False)
     return JobResponse(
         id=job.id,
         job_type=job.job_type,
@@ -1090,7 +1105,7 @@ def sync_index(user: User = Depends(get_current_user), db: Session = Depends(get
     db.add(job)
     db.commit()
     db.refresh(job)
-    _queue_index_job(db, user.id, job.id)
+    _queue_index_job(db, user.id, job.id, failed_only=True)
     return {"success": True, "job_id": job.id, "status": job.status}
 
 
@@ -1100,7 +1115,7 @@ def rebuild_index(user: User = Depends(get_current_user), db: Session = Depends(
     db.add(job)
     db.commit()
     db.refresh(job)
-    _queue_index_job(db, user.id, job.id)
+    _queue_index_job(db, user.id, job.id, failed_only=False)
     return {"success": True, "job_id": job.id, "status": job.status}
 
 
