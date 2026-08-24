@@ -867,7 +867,6 @@ export function ChatInterface() {
       </div>
 
       <div className="border-t border-border p-4 bg-card">
-        <TooltipProvider delayDuration={300}>
         <div className="max-w-3xl mx-auto space-y-3">
           <div className="flex items-center justify-between gap-2">
               <DropdownMenu>
@@ -1053,7 +1052,7 @@ export function ChatInterface() {
             </div>
           </div>
         </div>
-        </TooltipProvider>
+
         <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader>

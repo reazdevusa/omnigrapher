@@ -544,7 +544,6 @@ export default function DocumentPage() {
   };
 
   return (
-    <TooltipProvider delayDuration={300}>
     <div className="flex h-screen w-full overflow-hidden">
       {!isFullScreen && <Sidebar />}
       <div className="flex-1 h-full flex flex-row overflow-hidden">
@@ -1109,6 +1108,5 @@ export default function DocumentPage() {
         </DialogContent>
       </Dialog>
     </div>
-    </TooltipProvider>
   );
 }

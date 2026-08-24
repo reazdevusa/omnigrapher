@@ -300,7 +300,6 @@ export function Sidebar() {
   ];
 
   return (
-    <TooltipProvider delayDuration={300}>
     <aside className="w-80 h-screen border-r border-border bg-card flex flex-col">
       <div className="p-4 border-b border-border">
         <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary">
@@ -594,6 +593,5 @@ export function Sidebar() {
         )}
       </div>
     </aside>
-    </TooltipProvider>
   );
 }
