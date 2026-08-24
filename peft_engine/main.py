@@ -62,7 +62,19 @@ async def lifespan(app: FastAPI):
             preload_all_adapters(adapter_dir)
             logger.info("Startup warmup: adapter weights pre-loaded into RAM.")
         except Exception as exc:
-            logger.warning("Startup warmup failed (non-fatal): %s", exc)
+            logger.warning("Startup warmup failed (non-fatal, continuing without warmup): %s", exc)
+
+    # Initialize inference engine and register it with routes
+    try:
+        from peft_engine.app.core.inference import PeftInferenceEngine
+        import peft_engine.app.api.routes as routes_module
+
+        engine = PeftInferenceEngine(settings)
+        routes_module._inference_engine = engine
+        available = engine.list_available_adapters()
+        logger.info("Inference engine initialized. Available adapters: %s", available)
+    except Exception as exc:
+        logger.warning("Could not initialize inference engine (non-fatal): %s", exc)
 
     yield  # Application runs here
 

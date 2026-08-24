@@ -64,27 +64,10 @@ def export_gguf(
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info("Exporting GGUF to %s with quantization %s", output_file, quantization)
-    try:
-        from unsloth import FastLanguageModel
-
-        _, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=str(merged_model_dir),
-            max_seq_length=settings.max_seq_length,
-            dtype=None,
-            load_in_4bit=False,
-        )
-        FastLanguageModel.save_to_gguf(
-            model_name=str(merged_model_dir),
-            tokenizer=tokenizer,
-            quantization_method=quantization,
-            output_filename=str(output_file),
-        )
-        return output_file
-    except Exception as exc:
-        logger.exception("GGUF export failed")
-        raise RuntimeError(
-            "GGUF export failed. Ensure llama.cpp/Unsloth export dependencies are installed."
-        ) from exc
+    raise RuntimeError(
+        "GGUF export requires llama.cpp convert tools. "
+        "Use `llama-cpp-python` or the llama.cpp CLI to convert the merged model."
+    )
 
 
 def export_pipeline(

@@ -125,7 +125,7 @@ class Settings:
     ))
 
     # Base model
-    base_model: str = os.getenv("PEFT_BASE_MODEL", "unsloth/Llama-3.2-3B-Instruct")
+    base_model: str = os.getenv("PEFT_BASE_MODEL", "Qwen/Qwen2.5-3B-Instruct")
     max_seq_length: int = _positive_int("PEFT_MAX_SEQ_LENGTH", 2048)
 
     # LoRA
@@ -137,7 +137,7 @@ class Settings:
         "PEFT_TARGET_MODULES",
         "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
     ))
-    use_gradient_checkpointing: str = os.getenv("PEFT_USE_GRADIENT_CHECKPOINTING", "unsloth")
+    use_gradient_checkpointing: bool = _bool_env("PEFT_USE_GRADIENT_CHECKPOINTING", True)
 
     # Training
     num_train_epochs: int = _positive_int("PEFT_EPOCHS", 3)

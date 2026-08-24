@@ -136,8 +136,10 @@ class LLMService:
         temperature: float,
         max_tokens: int,
     ) -> LLMResponse:
-        # Drive disconnection guard
-        if not is_external_drive_ready():
+        # Drive disconnection guard — skip when running inside Docker
+        # (the PEFT engine on the host validates its own storage access)
+        skip_drive_check = _bool_env("PEFT_SKIP_DRIVE_CHECK", False)
+        if not skip_drive_check and not is_external_drive_ready():
             logger.warning(
                 "External drive not accessible at '%s'. "
                 "Skipping PEFT engine call — routing to fallback.",

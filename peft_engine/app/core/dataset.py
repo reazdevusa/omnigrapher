@@ -21,14 +21,16 @@ def load_jsonl(path: Union[str, Path]) -> List[dict]:
 
 
 def format_chatml(messages: List[dict]) -> str:
-    """Convert a list of ChatML messages into a single text string."""
+    """Convert a list of ChatML messages into a single text string.
+
+    Uses the standard ChatML format (<|im_start|>/<|im_end|>) which is
+    compatible with Qwen, Yi, and other ChatML-based models.
+    """
     parts = []
     for msg in messages:
         role = msg.get("role", "user")
         content = msg.get("content", "")
-        parts.append(f"<|{role}|>\n{content}")
-    # Add a trailing assistant marker for training completion
-    parts.append("<|assistant|>\n")
+        parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
     return "\n".join(parts)
 
 

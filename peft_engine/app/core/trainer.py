@@ -1,4 +1,8 @@
-"""Unsloth QLoRA adapter training wrapper with VRAM pinning and performance opts."""
+"""QLoRA adapter training wrapper with VRAM pinning and performance opts.
+
+Uses standard HuggingFace PEFT + BitsAndBytes + TRL stack for 4-bit
+quantized LoRA fine-tuning.  No external dependency on Unsloth.
+"""
 
 import logging
 import threading
@@ -51,22 +55,6 @@ def _pin_model_in_vram(model: Any) -> None:
         logger.warning("Could not pin model in VRAM: %s", exc)
 
 
-def _enable_flash_attention(model: Any) -> Any:
-    """Enable FlashAttention-2 or SDPA for reduced VRAM bandwidth overhead."""
-    try:
-        if hasattr(model, "config"):
-            # Try FlashAttention-2 first
-            if hasattr(model.config, "_attn_implementation"):
-                model.config._attn_implementation = "flash_attention_2"
-                logger.info("FlashAttention-2 enabled.")
-            elif hasattr(model.config, "attn_implementation"):
-                model.config.attn_implementation = "sdpa"
-                logger.info("SDPA (Scaled Dot-Product Attention) enabled.")
-    except Exception as exc:
-        logger.warning("Could not enable FlashAttention/SDPA: %s", exc)
-    return model
-
-
 def preload_adapter_to_memory(adapter_name: str, adapter_path: Path) -> None:
     """Pre-load adapter LoRA matrices into system RAM for sub-10ms swapping."""
     with _cache_lock:
@@ -104,19 +92,24 @@ def get_cached_adapter_weights(adapter_name: str) -> Optional[Any]:
 
 
 class AdapterTrainer:
-    """Train a LoRA adapter on top of a 4-bit base model using Unsloth."""
+    """Train a LoRA adapter on top of a 4-bit quantized base model.
+
+    Uses HuggingFace PEFT + BitsAndBytes for QLoRA (4-bit NF4 quantization)
+    and TRL's SFTTrainer for supervised fine-tuning.
+    """
 
     def __init__(self, settings: Optional[Settings] = None):
         self.settings = settings or get_settings()
 
     def load_base_model(self, base_model: Optional[str] = None, pin_vram: bool = False):
-        """Load the base model in 4-bit NF4 quantization.
+        """Load the base model in 4-bit NF4 quantization via BitsAndBytes.
 
         Args:
             base_model: Model identifier (HuggingFace hub or local path).
             pin_vram: If True, pin the model in VRAM after loading (for inference).
         """
-        from unsloth import FastLanguageModel
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
         model_name = base_model or self.settings.base_model
 
@@ -127,15 +120,28 @@ class AdapterTrainer:
                 return _base_model_cache[model_name]
 
         logger.info("Loading base model %s in 4-bit NF4 quantization", model_name)
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=model_name,
-            max_seq_length=self.settings.max_seq_length,
-            dtype=None,
+
+        bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16 if _supports_bf16() else torch.float16,
+            bnb_4bit_use_double_quant=True,
         )
 
-        # Enable FlashAttention-2 or SDPA
-        model = _enable_flash_attention(model)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16 if _supports_bf16() else torch.float16,
+            attn_implementation="sdpa",
+        )
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        # Enable gradient checkpointing for VRAM savings
+        model.gradient_checkpointing_enable()
 
         # Pin in VRAM if requested (inference mode)
         if pin_vram and _gpu_available():
@@ -149,19 +155,27 @@ class AdapterTrainer:
 
     def attach_lora(self, model):
         """Attach a LoRA adapter to the loaded model."""
-        from unsloth import FastLanguageModel
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-        return FastLanguageModel.get_peft_model(
-            model,
+        # Prepare the quantized model for LoRA training
+        model = prepare_model_for_kbit_training(model)
+
+        lora_config = LoraConfig(
             r=self.settings.r,
             target_modules=self.settings.target_modules,
             lora_alpha=self.settings.lora_alpha,
             lora_dropout=self.settings.lora_dropout,
             bias=self.settings.bias,
-            use_gradient_checkpointing=self.settings.use_gradient_checkpointing,
-            random_state=self.settings.seed,
-            max_seq_length=self.settings.max_seq_length,
+            task_type="CAUSAL_LM",
         )
+
+        model = get_peft_model(model, lora_config)
+        trainable, total = model.get_nb_trainable_parameters()
+        logger.info(
+            "LoRA attached: %d trainable params / %d total (%.2f%%)",
+            trainable, total, 100 * trainable / total,
+        )
+        return model
 
     def train(
         self,

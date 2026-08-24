@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=65.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "peft-engine"
+version = "1.0.0"
+description = "OmniGrapher PEFT Engine — Multi-LoRA fine-tuning and inference"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["peft_engine", "peft_engine.app", "peft_engine.app.api", "peft_engine.app.core"]
+
+[tool.setuptools.package-dir]
+peft_engine = "."
+"peft_engine.app" = "app"
+"peft_engine.app.api" = "app/api"
+"peft_engine.app.core" = "app/core"

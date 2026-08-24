@@ -1,17 +1,19 @@
 # PEFT engine microservice dependencies
 # Install in a dedicated virtual environment (Python 3.10/3.11 recommended).
-# Unsloth wheels may require a specific torch/CUDA version; follow the Unsloth
-# installation guide for your platform.
+#
+# 1. Install PyTorch with CUDA first:
+#    pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+# 2. Then install these:
 fastapi
 uvicorn
 python-dotenv
 pydantic
 httpx
-torch>=2.2.0
-transformers>=4.46.0
+transformers>=4.46.0,<4.47.0
 datasets
-trl>=0.12.0
-unsloth
-peft
-accelerate
-bitsandbytes
+trl>=0.12.0,<0.13.0
+peft>=0.13.0,<0.14.0
+accelerate>=1.1.0
+bitsandbytes>=0.44.0
+sentencepiece
+protobuf
