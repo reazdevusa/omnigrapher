@@ -544,6 +544,7 @@ export default function DocumentPage() {
   };
 
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="flex h-screen w-full overflow-hidden">
       {!isFullScreen && <Sidebar />}
       <div className="flex-1 h-full flex flex-row overflow-hidden">
@@ -555,29 +556,54 @@ export default function DocumentPage() {
           )}
           <div className="w-full flex-1 min-h-0 flex flex-col gap-6">
             <div className="flex items-center gap-4">
-              <Link href="/">
-                <Button variant="outline" size="icon">
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/">
+                    <Button variant="outline" size="icon">
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Back to chat</TooltipContent>
+              </Tooltip>
               <FileText className="h-8 w-8 text-primary" />
               <h1 className="text-2xl font-bold truncate">{filename}</h1>
               {!isFullScreen && (
-                <Button variant="outline" size="sm" onClick={() => setIsFullScreen(true)} className="ml-auto">
-                  <Maximize2 className="mr-2 h-4 w-4" /> Full-screen
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="sm" onClick={() => setIsFullScreen(true)} className="ml-auto">
+                      <Maximize2 className="mr-2 h-4 w-4" /> Full-screen
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>View document in full-screen mode (Esc to exit)</TooltipContent>
+                </Tooltip>
               )}
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Button variant={activeTab === "original" ? "default" : "outline"} onClick={() => setActiveTab("original")}>
-                <ImageIcon className="mr-2 h-4 w-4" /> Original
-              </Button>
-              <Button variant={activeTab === "content" ? "default" : "outline"} onClick={() => setActiveTab("content")}>
-                <FileText className="mr-2 h-4 w-4" /> Content
-              </Button>
-              <Button variant={activeTab === "chunks" ? "default" : "outline"} onClick={() => setActiveTab("chunks")}>
-                <Boxes className="mr-2 h-4 w-4" /> Chunks ({chunks.length})
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={activeTab === "original" ? "default" : "outline"} onClick={() => setActiveTab("original")}>
+                    <ImageIcon className="mr-2 h-4 w-4" /> Original
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>View the original uploaded file</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={activeTab === "content" ? "default" : "outline"} onClick={() => setActiveTab("content")}>
+                    <FileText className="mr-2 h-4 w-4" /> Content
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>View extracted text content</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant={activeTab === "chunks" ? "default" : "outline"} onClick={() => setActiveTab("chunks")}>
+                    <Boxes className="mr-2 h-4 w-4" /> Chunks ({chunks.length})
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>View how the document was split for AI search</TooltipContent>
+              </Tooltip>
             </div>
 
 
@@ -802,20 +828,30 @@ export default function DocumentPage() {
                 </DropdownMenu>
               </TooltipProvider>
               <div className="flex border rounded-md overflow-hidden">
-                <button
-                  type="button"
-                  className={`px-3 py-1.5 text-xs ${scope === "single" ? "bg-primary text-white" : "bg-background"}`}
-                  onClick={() => setScope("single")}
-                >
-                  This Document
-                </button>
-                <button
-                  type="button"
-                  className={`px-3 py-1.5 text-xs ${scope === "knowledge_base" ? "bg-primary text-white" : "bg-background"}`}
-                  onClick={() => setScope("knowledge_base")}
-                >
-                  Entire KB
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className={`px-3 py-1.5 text-xs ${scope === "single" ? "bg-primary text-white" : "bg-background"}`}
+                      onClick={() => setScope("single")}
+                    >
+                      This Document
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Search only within this document</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className={`px-3 py-1.5 text-xs ${scope === "knowledge_base" ? "bg-primary text-white" : "bg-background"}`}
+                      onClick={() => setScope("knowledge_base")}
+                    >
+                      Entire KB
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Search across all your uploaded documents</TooltipContent>
+                </Tooltip>
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-2">
@@ -881,42 +917,56 @@ export default function DocumentPage() {
               <div ref={chatBottomRef} />
             </div>
             <div className="flex gap-2 mb-2 flex-wrap">
-              <Button
-                size="sm"
-                variant={mode === "document" ? "default" : "outline"}
-                onClick={() => {
-                  setMode("document");
-                }}
-                className="h-8 px-2 text-xs"
-              >
-                From This Document
-              </Button>
-              <Button
-                size="sm"
-                variant={mode === "assistant" ? "default" : "outline"}
-                onClick={() => {
-                  setMode("assistant");
-                  const gemma = models.find((m) => m.id === "ollama-gemma2" && m.allowed && m.downloaded !== false);
-                  if (gemma) setAssistantModel(gemma.id);
-                }}
-                className="h-8 px-2 text-xs"
-              >
-                Ask AI Freely
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant={mode === "document" ? "default" : "outline"}
+                    onClick={() => {
+                      setMode("document");
+                    }}
+                    className="h-8 px-2 text-xs"
+                  >
+                    From This Document
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Answer using content from this document</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant={mode === "assistant" ? "default" : "outline"}
+                    onClick={() => {
+                      setMode("assistant");
+                      const gemma = models.find((m) => m.id === "ollama-gemma2" && m.allowed && m.downloaded !== false);
+                      if (gemma) setAssistantModel(gemma.id);
+                    }}
+                    className="h-8 px-2 text-xs"
+                  >
+                    Ask AI Freely
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Chat with the AI without document context</TooltipContent>
+              </Tooltip>
             </div>
             <div className="flex gap-2 flex-wrap mb-2">
               {["Summarize this document", "What are the key findings?", "Explain the main concepts"].map((q) => (
-                <Button
-                  key={q}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setQuery(q);
-                  }}
-                  disabled={isStreaming}
-                >
-                  {q}
-                </Button>
+                <Tooltip key={q}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setQuery(q);
+                      }}
+                      disabled={isStreaming}
+                    >
+                      {q}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Click to use this as your question</TooltipContent>
+                </Tooltip>
               ))}
             </div>
             <div className="flex gap-2">
@@ -933,9 +983,14 @@ export default function DocumentPage() {
                 className="min-h-[60px] flex-1 resize-none"
                 disabled={isStreaming}
               />
-              <Button onClick={handleSend} disabled={isStreaming || !query.trim()} className="self-end">
-                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={handleSend} disabled={isStreaming || !query.trim()} className="self-end">
+                    {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Send message (Enter)</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -1054,5 +1109,6 @@ export default function DocumentPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }

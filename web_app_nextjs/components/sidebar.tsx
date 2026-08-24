@@ -20,6 +20,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { LoginDialog } from "@/components/login-dialog";
 import * as api from "@/lib/api";
 import { ChatSession, loadSessions, saveSessions, createSession, autoTitle } from "@/lib/sessions";
@@ -294,6 +300,7 @@ export function Sidebar() {
   ];
 
   return (
+    <TooltipProvider delayDuration={300}>
     <aside className="w-80 h-screen border-r border-border bg-card flex flex-col">
       <div className="p-4 border-b border-border">
         <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary">
@@ -303,21 +310,31 @@ export function Sidebar() {
       </div>
 
       <div className="p-3 space-y-2">
-        <Button onClick={handleNewChat} className="w-full justify-start" variant="outline">
-          <MessageSquarePlus className="mr-2 h-4 w-4" />
-          New Chat
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={handleNewChat} className="w-full justify-start" variant="outline">
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              New Chat
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Start a new conversation</TooltipContent>
+        </Tooltip>
 
         <div className="flex gap-2">
           {navItems.map((item) => (
             <Link key={item.href} href={item.href} className="flex-1">
-              <Button
-                variant={pathname === item.href ? "default" : "outline"}
-                className="w-full justify-center"
-                size="sm"
-              >
-                <item.icon className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={pathname === item.href ? "default" : "outline"}
+                    className="w-full justify-center"
+                    size="sm"
+                  >
+                    <item.icon className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{item.label}</TooltipContent>
+              </Tooltip>
             </Link>
           ))}
         </div>
@@ -387,23 +404,43 @@ export function Sidebar() {
         <div className="space-y-2">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Documents</h4>
           <div className="flex items-center gap-2">
-            <Input
-              type="file"
-              multiple
-              onChange={(e) => setSelectedFiles(e.target.files)}
-              className="text-xs h-8"
-            />
-            <Button size="sm" onClick={handleUpload} disabled={isUploading || !selectedFiles || selectedFiles.length === 0}>
-              <UploadCloud className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Input
+                  type="file"
+                  multiple
+                  onChange={(e) => setSelectedFiles(e.target.files)}
+                  className="text-xs h-8"
+                />
+              </TooltipTrigger>
+              <TooltipContent>Select files to upload (PDF, TXT, DOCX, etc.)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" onClick={handleUpload} disabled={isUploading || !selectedFiles || selectedFiles.length === 0}>
+                  <UploadCloud className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Upload selected files to the knowledge base</TooltipContent>
+            </Tooltip>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={handleSync} className="flex-1">
-              Sync
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleRebuild} className="flex-1">
-              Rebuild
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="outline" onClick={handleSync} className="flex-1">
+                  Sync
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Retry only failed or pending documents</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="outline" onClick={handleRebuild} className="flex-1">
+                  Rebuild
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Re-index all documents from scratch</TooltipContent>
+            </Tooltip>
           </div>
 
           <Dialog open={jobsOpen} onOpenChange={setJobsOpen}>
@@ -516,21 +553,36 @@ export function Sidebar() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Link href="/profile">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <User className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/profile">
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <User className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Profile settings</TooltipContent>
+              </Tooltip>
               {user.role === "admin" && (
-                <Link href="/admin">
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </Link>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link href="/admin">
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>Admin panel</TooltipContent>
+                </Tooltip>
               )}
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={logout}>
-                <LogOut className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={logout}>
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Sign out</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         ) : (
@@ -542,5 +594,6 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+    </TooltipProvider>
   );
 }

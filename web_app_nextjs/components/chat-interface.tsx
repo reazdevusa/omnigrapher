@@ -1020,26 +1020,36 @@ export function ChatInterface() {
           />
           <div className="flex items-center gap-3">
             <div className="flex gap-2">
-              <Button
-                variant={mode === "document" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setMode("document")}
-              >
-                From My Documents
-              </Button>
-              <Button
-                variant={mode === "assistant" ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setMode("assistant");
-                  if (selectedModel === "no_llm") {
-                    const gemma = models.find((m) => m.id === "ollama-gemma2" && m.allowed && m.downloaded !== false);
-                    if (gemma) setSelectedModel(gemma.id);
-                  }
-                }}
-              >
-                Ask AI Freely
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={mode === "document" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setMode("document")}
+                  >
+                    From My Documents
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Search and answer from your uploaded documents only</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={mode === "assistant" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setMode("assistant");
+                      if (selectedModel === "no_llm") {
+                        const gemma = models.find((m) => m.id === "ollama-gemma2" && m.allowed && m.downloaded !== false);
+                        if (gemma) setSelectedModel(gemma.id);
+                      }
+                    }}
+                  >
+                    Ask AI Freely
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Chat with the AI model without document context</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
