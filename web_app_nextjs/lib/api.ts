@@ -1,7 +1,8 @@
 const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "";
+  (typeof window !== "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL
+    : process.env.INTERNAL_API_URL) ||
+  "http://localhost:8001";
 const BACKEND_DISPLAY = BACKEND_URL || "the backend";
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT_MS = 10000;

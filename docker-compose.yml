@@ -142,6 +142,7 @@ services:
       - "3000:3000"
     environment:
       - INTERNAL_API_URL=http://backend:8001
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8001
     depends_on:
       - backend
     volumes:
