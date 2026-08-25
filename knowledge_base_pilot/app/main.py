@@ -268,6 +268,12 @@ def set_api_key(
 
 @app.on_event("startup")
 def start_background_services():
+    # Recover documents stuck in parsing/processing from a previous crash.
+    from app.tasks.ingestion import recover_stale_tasks
+    recovered = recover_stale_tasks()
+    if recovered:
+        logger.info("Recovered %d stale document(s) on startup", recovered)
+
     start_ingestion_worker()
     # Pre-load the local Ollama model so the first user request doesn't wait for GPU allocation.
     threading.Thread(target=_warmup_ollama, daemon=True).start()

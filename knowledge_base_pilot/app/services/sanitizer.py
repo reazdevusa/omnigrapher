@@ -74,9 +74,16 @@ except Exception:  # pragma: no cover
     AnonymizerEngine = None  # type: ignore[misc,assignment]
 
 
+_cached_analyzer: Optional["AnalyzerEngine"] = None
+_analyzer_init_failed: bool = False
+
+
 def _get_presidio_analyzer() -> Optional["AnalyzerEngine"]:
-    if not _presidio_available or AnalyzerEngine is None:
+    global _cached_analyzer, _analyzer_init_failed
+    if not _presidio_available or AnalyzerEngine is None or _analyzer_init_failed:
         return None
+    if _cached_analyzer is not None:
+        return _cached_analyzer
     try:
         from presidio_analyzer.nlp_engine import NlpEngineProvider
 
@@ -87,15 +94,17 @@ def _get_presidio_analyzer() -> Optional["AnalyzerEngine"]:
         provider = NlpEngineProvider(nlp_configuration=nlp_config)
         registry = RecognizerRegistry()
         registry.load_predefined_recognizers()
-        return AnalyzerEngine(
+        _cached_analyzer = AnalyzerEngine(
             registry=registry,
             nlp_engine=provider.create_engine(),
             supported_languages=["en"],
         )
+        return _cached_analyzer
     except Exception:
         logger.warning(
             "Presidio AnalyzerEngine failed to initialize; using regex fallback."
         )
+        _analyzer_init_failed = True
         return None
 
 

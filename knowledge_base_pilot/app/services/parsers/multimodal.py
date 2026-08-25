@@ -11,12 +11,17 @@ fall back to the existing PyMuPDF pipeline.
 import base64
 import logging
 import os
+import shutil
 import tempfile
 import traceback
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Optional
 
 import requests
+
+# Maximum seconds to spend on Unstructured PDF extraction before aborting.
+_EXTRACTION_TIMEOUT = int(os.getenv("PDF_EXTRACTION_TIMEOUT", "300"))
 
 try:
     from unstructured.partition.pdf import partition_pdf
@@ -131,36 +136,61 @@ def parse_pdf(file_path: Path) -> Optional[list]:
     image_dir = Path(tempfile.gettempdir()) / f"kb_parsed_images_{file_path.stem}"
     image_dir.mkdir(parents=True, exist_ok=True)
 
-    elements = None
-    try:
-        elements = partition_pdf(
-            filename=str(file_path),
-            strategy="hi_res",
-            extract_images_in_pdf=True,
-            infer_table_structure=True,
-            include_page_breaks=False,
-            languages=["eng"],
-            image_output_dir_path=str(image_dir),
-        )
-    except Exception:
-        logger.warning(
-            "Unstructured hi_res parsing failed for %s; trying fast strategy",
-            file_path.name,
-            exc_info=True,
-        )
-        try:
-            elements = partition_pdf(
+    has_tesseract = shutil.which("tesseract") is not None
+
+    def _extract():
+        """Run Unstructured extraction (may be slow for large PDFs)."""
+        els = None
+        if has_tesseract:
+            try:
+                els = partition_pdf(
+                    filename=str(file_path),
+                    strategy="hi_res",
+                    extract_images_in_pdf=True,
+                    infer_table_structure=True,
+                    include_page_breaks=False,
+                    languages=["eng"],
+                    image_output_dir_path=str(image_dir),
+                )
+            except Exception:
+                logger.warning(
+                    "Unstructured hi_res parsing failed for %s; trying fast strategy",
+                    file_path.name,
+                    exc_info=True,
+                )
+        else:
+            logger.info(
+                "Tesseract not installed; skipping hi_res strategy for %s",
+                file_path.name,
+            )
+
+        if els is None:
+            els = partition_pdf(
                 filename=str(file_path),
                 strategy="fast",
                 include_page_breaks=False,
             )
-        except Exception:
-            logger.warning(
-                "Unstructured fast parsing failed for %s",
-                file_path.name,
-                exc_info=True,
-            )
-            return None
+        return els
+
+    elements = None
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_extract)
+            elements = future.result(timeout=_EXTRACTION_TIMEOUT)
+    except FuturesTimeout:
+        logger.warning(
+            "Unstructured PDF extraction timed out after %ds for %s",
+            _EXTRACTION_TIMEOUT,
+            file_path.name,
+        )
+        return None
+    except Exception:
+        logger.warning(
+            "Unstructured parsing failed for %s",
+            file_path.name,
+            exc_info=True,
+        )
+        return None
 
     if not elements:
         return None
