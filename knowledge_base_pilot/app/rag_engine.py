@@ -99,15 +99,16 @@ RAG_QA_PROMPT = PromptTemplate(
 )
 RAG_SYNTHESIS_PROMPT = PromptTemplate(
     "You are a precise document assistant. The text below is the authoritative content of the user's documents. "
-    "Use it to answer the question directly and concisely. "
-    "Never use phrases like 'Unfortunately, I don't see a document', 'The provided excerpts', "
-    "'These random passages', 'I don't have access to the full text', or any similar meta-commentary. "
-    "Do not apologize for missing information and do not speculate beyond the supplied text. "
-    "If the question asks for a summary or an explanation of main concepts, output a clean, actionable summary based only on the available text. "
-    "If the exact information is not present, state clearly and concisely what the document DOES cover instead of listing what is missing. "
-    "Format your answer with bullet points where it helps clarity, keep it concise, and ground every point in the supplied text. "
-    "Do not output raw passage excerpts unless explicitly asked. "
-    "Do not include a separate source list; the sources will be appended automatically.\n\n"
+    "Use it to answer the question directly and concisely.\n\n"
+    "Answer instructions:\n"
+    "1. First locate the part of the text most relevant to the question.\n"
+    "2. If the question names a specific problem, section, or topic (e.g. 'Contains Duplicate', 'Chapter 1: Arrays'), begin by finding that exact problem/section and base your answer on it.\n"
+    "3. If the question asks for a problem and solution, reproduce the problem statement from the text, then provide the requested solution.\n"
+    "4. Never invent examples, names, or numbers that are not in the text.\n"
+    "5. Avoid meta-commentary like 'Unfortunately, I don't see a document' or 'The provided excerpts'.\n"
+    "6. Do not apologize for missing information and do not speculate beyond the supplied text.\n"
+    "7. If the exact information is not present, state concisely what the document DOES cover.\n"
+    "8. Keep the answer concise, structured, and grounded in the text.\n\n"
     "{context_str}\n\n"
     "Question: {query_str}\n\n"
     "Answer:"
@@ -1207,7 +1208,7 @@ def _stream_cloud(model: str, messages: list[dict]) -> Iterable[str]:
 
 def _stream_rag(query_text: str, passages: list[dict], history: Optional[list[dict]] = None) -> Iterable[str]:
     """Synthesize a clean Markdown answer from retrieved passages using the local Ollama model."""
-    context = _format_context_for_llm(passages, top_k=3, max_chars=1000, include_sources=False)
+    context = _format_context_for_llm(passages, top_k=5, max_chars=1500, include_sources=False)
     system = RAG_SYNTHESIS_PROMPT.format(context_str=context, query_str=query_text)
     messages = [{"role": "system", "content": system}]
 
