@@ -126,9 +126,9 @@ if ($embeddingModel -notin $availableModels) {
 Write-Log "Ollama models verified." Green
 
 Write-Log "[5/5] Waiting for backend and frontend to be ready..." Cyan
-Wait-For-HttpEndpoint -Uri "http://localhost:$BackendPort/" -TimeoutSeconds 120
+Wait-For-HttpEndpoint -Uri "http://localhost:$BackendPort/" -TimeoutSeconds 300
 $frontendUrl = "http://localhost:$FrontendPort/"
-Wait-For-HttpEndpoint -Uri $frontendUrl -TimeoutSeconds 120
+Wait-For-HttpEndpoint -Uri $frontendUrl -TimeoutSeconds 180
 Write-Log "Backend and frontend are healthy." Green
 
 Start-Process $frontendUrl
