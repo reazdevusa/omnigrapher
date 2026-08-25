@@ -5,6 +5,7 @@ const BACKEND_URL =
 const BACKEND_DISPLAY = BACKEND_URL || "the backend";
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT_MS = 10000;
+const UPLOAD_TIMEOUT_MS = 600_000; // 10 minutes for large file uploads
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   if (timeoutMs <= 0) {
@@ -198,8 +199,11 @@ export async function uploadDocuments(token: string, files: FileList): Promise<{
       method: "POST",
       credentials: "include",
       body: formData,
-    }, REQUEST_TIMEOUT_MS * 3);
-  } catch (e) {
+    }, UPLOAD_TIMEOUT_MS);
+  } catch (e: any) {
+    if (e?.name === "AbortError" || e?.message?.toLowerCase().includes("timed out")) {
+      throw new Error(`Upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 1000)} seconds. Try uploading a smaller file or check that the backend is running.`);
+    }
     throw new Error(`Backend is unreachable at ${BACKEND_DISPLAY}. Please start the API server.`);
   }
   if (!res.ok) {
