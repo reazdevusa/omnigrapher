@@ -29,6 +29,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import * as api from "@/lib/api";
+import { encodeDocumentPath } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
 import { toast } from "sonner";
 import {
@@ -106,7 +107,7 @@ function AssistantContent({
           return (
             <a
               key={i}
-              href={`/documents/${encodeURIComponent(filename)}#page=${page}`}
+              href={`/documents/${encodeDocumentPath(filename)}#page=${page}`}
               onClick={(e) => handleClick(e, filename, page)}
               className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 mx-0.5"
             >
@@ -121,7 +122,7 @@ function AssistantContent({
           return (
             <a
               key={i}
-              href={`/documents/${encodeURIComponent(source)}#page=${page}`}
+              href={`/documents/${encodeDocumentPath(source)}#page=${page}`}
               onClick={(e) => handleClick(e, source, page)}
               title={`Jump to page ${page}`}
               className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 mx-0.5"

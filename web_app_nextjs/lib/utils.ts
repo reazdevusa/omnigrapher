@@ -23,3 +23,11 @@ export function formatBytes(bytes: number, decimals = 2) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
+
+export function encodeDocumentPath(filename: string): string {
+  // Next.js treats URLs with dots as static files and will not match a
+  // dynamic `[filename]` route. Encode dots so filenames like `foo.pdf`
+  // still resolve to the document viewer. decodeURIComponent in the viewer
+  // will restore the original name.
+  return encodeURIComponent(filename).replace(/\./g, "%2E");
+}

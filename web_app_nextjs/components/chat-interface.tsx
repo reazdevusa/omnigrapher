@@ -29,6 +29,7 @@ import { LoginDialog } from "@/components/login-dialog";
 import { MarkdownContent } from "@/components/markdown-content";
 import { ChatInput } from "@/components/chat-input";
 import * as api from "@/lib/api";
+import { encodeDocumentPath } from "@/lib/utils";
 import { APP_CONFIG, loadSetting, saveSetting } from "@/lib/config";
 import { ChatSession, Message, Citation, loadSessions, saveSessions, createSession, autoTitle } from "@/lib/sessions";
 import { toast } from "sonner";
@@ -85,7 +86,7 @@ const SearchSnippets = memo(function SearchSnippets({
               <FileText className="h-4 w-4 text-muted-foreground" />
               {citation ? (
                 <a
-                  href={citation.file_url || `/documents/${encodeURIComponent(citation.source)}#page=${citation.page}`}
+                  href={citation.file_url || `/documents/${encodeDocumentPath(citation.source)}#page=${citation.page}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-medium text-primary hover:underline"
@@ -123,7 +124,7 @@ const ChatMessageContent = memo(function ChatMessageContent({
         if (sourceMatch) {
           const source = sourceMatch[1].trim();
           const page = parseInt(sourceMatch[2], 10);
-          const href = `/documents/${encodeURIComponent(source)}#page=${page}`;
+          const href = `/documents/${encodeDocumentPath(source)}#page=${page}`;
           return (
             <a
               key={i}
@@ -751,7 +752,7 @@ export function ChatInterface() {
                     {msg.citations.map((citation, idx) => (
                       <a
                         key={idx}
-                        href={citation.file_url || `/documents/${encodeURIComponent(citation.source)}#page=${citation.page}`}
+                        href={citation.file_url || `/documents/${encodeDocumentPath(citation.source)}#page=${citation.page}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20"

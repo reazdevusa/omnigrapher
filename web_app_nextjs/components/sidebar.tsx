@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/tooltip";
 import { LoginDialog } from "@/components/login-dialog";
 import * as api from "@/lib/api";
+import { encodeDocumentPath } from "@/lib/utils";
 import { ChatSession, loadSessions, saveSessions, createSession, autoTitle } from "@/lib/sessions";
 import { toast } from "sonner";
 import {
@@ -201,7 +202,7 @@ export function Sidebar() {
   };
 
   const handlePreview = (doc: api.DocumentItem) => {
-    router.push(`/documents/${encodeURIComponent(doc.filename)}`);
+    router.push(`/documents/${encodeDocumentPath(doc.filename)}`);
   };
 
   const handleReindex = async (id: number) => {
@@ -480,7 +481,7 @@ export function Sidebar() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     {doc.status === "failed" && <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />}
-                    <Link href={`/documents/${encodeURIComponent(doc.filename)}`} className="text-sm truncate hover:underline" title={doc.filename}>{doc.filename}</Link>
+                    <Link href={`/documents/${encodeDocumentPath(doc.filename)}`} className="text-sm truncate hover:underline" title={doc.filename}>{doc.filename}</Link>
                   </div>
                   {doc.status === "failed" && (
                     <p className="mt-0.5 truncate text-[11px] text-destructive" title={doc.error}>
