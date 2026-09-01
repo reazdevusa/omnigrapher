@@ -1,13 +1,25 @@
 import asyncio
 import json
+import logging
 import mimetypes
 import os
 import shutil
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 from urllib.parse import unquote
+
+logger = logging.getLogger(__name__)
+
+# Add the workspace root (parent of knowledge_base_pilot) to the path so the
+# pluggable OmniGrapher modules can be imported in local development. In
+# containerized deployments, mount the omnigrapher package and set PYTHONPATH
+# instead.
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
+if _WORKSPACE_ROOT.joinpath("omnigrapher").is_dir() and str(_WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_WORKSPACE_ROOT))
 
 from dotenv import load_dotenv
 import requests
@@ -115,6 +127,21 @@ init_db()
 app.include_router(ai_router.router, prefix="/api")
 app.include_router(chat_router.router, prefix="/api")
 app.include_router(connectors_router.router, prefix="/api")
+
+# AEO Studio (Answer Engine Optimization) module router.
+# In Docker the omnigrapher package may not be in the backend image, so import
+# it conditionally. Mount/copy the package or build it in to enable AEO Studio
+# in containerized deployments.
+try:
+    from omnigrapher.modules.aeo_studio.router import get_router as get_aeo_router
+
+    app.include_router(get_aeo_router())
+    logger.info("AEO Studio router mounted at /api/v1/aeo-studio")
+except ModuleNotFoundError:
+    logger.warning(
+        "AEO Studio module not available; skipping /api/v1/aeo-studio routes. "
+        "To enable it, ensure the omnigrapher package is on PYTHONPATH."
+    )
 
 
 @app.get("/api/me/credits")

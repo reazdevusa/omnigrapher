@@ -49,6 +49,48 @@ function Invoke-Robocopy($Src, $Dst) {
     }
 }
 
+function Invoke-Docker($Arguments) {
+    & docker @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker command failed: docker $($Arguments -join ' ')"
+    }
+}
+
+function New-NativeSnapshots($Destination, $Timestamp) {
+    $native = Join-Path $Destination "native"
+    New-Item -ItemType Directory -Path $native -Force | Out-Null
+
+    Write-Status "Creating transaction-consistent SQLite snapshot..."
+    Invoke-Docker -Arguments @("exec", "knowledge-base-backend", "python", "-c", "import sqlite3; src=sqlite3.connect('/app/kb.db'); dst=sqlite3.connect('/tmp/kb-backup.db'); src.backup(dst); dst.close(); src.close()")
+    Invoke-Docker -Arguments @("cp", "knowledge-base-backend:/tmp/kb-backup.db", (Join-Path $native "kb.db"))
+
+    Write-Status "Creating PostgreSQL logical and physical backups..."
+    Invoke-Docker -Arguments @("exec", "knowledge-base-postgres", "pg_dump", "-U", "awap_user", "-d", "knowledge_base", "-Fc", "-f", "/tmp/knowledge_base.dump")
+    Invoke-Docker -Arguments @("cp", "knowledge-base-postgres:/tmp/knowledge_base.dump", (Join-Path $native "knowledge_base.dump"))
+    Invoke-Docker -Arguments @("exec", "knowledge-base-postgres", "pg_basebackup", "-U", "awap_user", "-D", "/tmp/pg-basebackup", "-Ft", "-z", "-X", "stream", "-c", "fast")
+    Invoke-Docker -Arguments @("cp", "knowledge-base-postgres:/tmp/pg-basebackup/.", (Join-Path $native "postgres-basebackup"))
+    Invoke-Docker -Arguments @("exec", "knowledge-base-postgres", "tar", "-C", "/var/lib/postgresql/data/wal_archive", "-czf", "/tmp/postgres-wal.tar.gz", ".")
+    Invoke-Docker -Arguments @("cp", "knowledge-base-postgres:/tmp/postgres-wal.tar.gz", (Join-Path $native "postgres-wal.tar.gz"))
+
+    Write-Status "Creating Redis snapshot..."
+    Invoke-Docker -Arguments @("exec", "knowledge-base-redis", "redis-cli", "SAVE")
+    Invoke-Docker -Arguments @("cp", "knowledge-base-redis:/data/dump.rdb", (Join-Path $native "redis-dump.rdb"))
+
+    Write-Status "Creating Chroma snapshot..."
+    Invoke-Docker -Arguments @("exec", "knowledge-base-chromadb", "tar", "-C", "/chroma/chroma", "-czf", "/tmp/chroma-data.tar.gz", ".")
+    Invoke-Docker -Arguments @("cp", "knowledge-base-chromadb:/tmp/chroma-data.tar.gz", (Join-Path $native "chroma-data.tar.gz"))
+
+    Write-Status "Validating native snapshots..."
+    Invoke-Docker -Arguments @("exec", "knowledge-base-backend", "python", "-c", "import sqlite3; c=sqlite3.connect('/tmp/kb-backup.db'); assert c.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'; c.close()")
+    Invoke-Docker -Arguments @("exec", "knowledge-base-postgres", "pg_restore", "--list", "/tmp/knowledge_base.dump")
+    Invoke-Docker -Arguments @("exec", "knowledge-base-postgres", "tar", "-tzf", "/tmp/postgres-wal.tar.gz")
+    Invoke-Docker -Arguments @("exec", "knowledge-base-chromadb", "tar", "-tzf", "/tmp/chroma-data.tar.gz")
+
+    Invoke-Docker -Arguments @("exec", "knowledge-base-backend", "rm", "-f", "/tmp/kb-backup.db")
+    Invoke-Docker -Arguments @("exec", "knowledge-base-postgres", "rm", "-rf", "/tmp/knowledge_base.dump", "/tmp/pg-basebackup", "/tmp/postgres-wal.tar.gz")
+    Invoke-Docker -Arguments @("exec", "knowledge-base-chromadb", "rm", "-f", "/tmp/chroma-data.tar.gz")
+}
+
 if (-not (Test-Path $Config)) { throw "Backup config not found: $Config" }
 $cfg = Get-Content $Config -Raw | ConvertFrom-Json -AsHashtable
 $ws = $cfg.workspace
@@ -60,7 +102,7 @@ Start-Transcript -Path $log -Append -Force | Out-Null
 
 $manifest = [ordered]@{
     started = (Get-Date -Format "o")
-    layers  = [ordered]@()
+    layers  = @()
 }
 
 # --- Layer 1: Local ---
@@ -68,6 +110,7 @@ if ($cfg.local.enabled) {
     Write-Status "Starting Layer 1: Local backup"
     $dest = "$ws\omnigrapher\backups\local\$ts"
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    New-NativeSnapshots -Destination $dest -Timestamp $ts
     foreach ($rel in $cfg.local.include) {
         $src = Join-Path $ws $rel
         if (-not (Test-Path $src)) { Write-Warning "Source missing: $src"; continue }

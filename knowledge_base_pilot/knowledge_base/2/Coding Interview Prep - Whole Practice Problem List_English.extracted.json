@@ -1,0 +1,32 @@
+[
+  {
+    "page": 1,
+    "text": "Coding Interview Prep — Complete Practice Problem List Based on your NeetCode roadmap screenshot, here's a detailed practice problem list for each topic. Arranged in Easy → Medium → Hard order within each topic, so confidence builds gradually. How to use this: Each problem has a checkbox [ 1— mark it [x]after solving to track your progress Search the problem name on LeetCode and you'll find it (names match LeetCode exactly) TwoPointers→Stack→...) 1. Arrays Core pattern: prefix sum, sorting, hashing, in-place manipulation Contains Duplicate Valid Anagram Two Sum Group Anagrams Top K Frequent Elements Product of Array Except Self Valid Sudoku Encode and Decode Strings Longest Consecutive Sequence BestTimetoBuyandSellStock Maximum Subarray (Kadane's Algorithm) Maximum Product Subarray Find Minimum in Rotated Sorted Array Search inRotated Sorted Array 3Sum ContainerWithMostWater Rotate Array Merge Intervals Insert Interval Non-overlapping Intervals Meeting Rooms Il SetMatrixZeroes Spiral Matrix Rotate Image Word Search",
+    "parser": "PyMuPDF + RapidOCR"
+  },
+  {
+    "page": 2,
+    "text": "2. Two Pointers Core pattern: scanning from both ends of a sorted array/string, fast-slow pointer Valid Palindrome TwoSumIl-InputArrayIsSorted 3Sum 3SumClosest 4Sum ContainerWithMostWater Trapping Rain Water RemoveDuplicatesfromSortedArray MoveZeroes Sort Colors (Dutch National Flag) Reverse String Squares of a Sorted Array BoatstoSavePeople Linked List Cycle (fast-slow pointer) Middle of theLinked List 3. Stack Core pattern: using LiFO to solve nested-structure or\"matching\" problems ValidParentheses MinStack Evaluate ReversePolishNotation GenerateParentheses Daily Temperatures Car Fleet Largest Rectangle in Histogram NextGreaterElementI&Il Simplify Path Decode String AsteroidCollision BasicCalculatorll Remove All AdjacentDuplicates in String Online Stock Span Implement Queue using Stacks 4. Linked List",
+    "parser": "PyMuPDF + RapidOCR"
+  },
+  {
+    "page": 3,
+    "text": "Reverse Linked List Merge Two Sorted Lists ReorderList RemoveNthNodeFromEndofList Copy List with Random Pointer Add TwoNumbers Linked List Cycle Find the Duplicate Number LRU Cache Merge K Sorted Lists Reverse Nodes in k-Group Sort List Palindrome Linked List IntersectionofTwoLinkedLists FlattenaMultilevel DoublyLinkedList Swap Nodes in Pairs Rotate List Design Linked List 5. Binary Search Binary Search Search a 2D Matrix Koko Eating Bananas Find Minimum in Rotated Sorted Array Search in Rotated Sorted Array Search in Rotated Sorted ArrayIl TimeBasedKey-ValueStore Median of Two Sorted Arrays IFind First and Last Position of Element inSorted Array CapacityToShipPackagesWithinDDays Split Array Largest Sum Find Peak Element SearchInsertPosition Sqrt(x) KthSmallestElementinaSortedMatrix 6. Sliding Window",
+    "parser": "PyMuPDF + RapidOCR"
+  },
+  {
+    "page": 4,
+    "text": "BestTimetoBuyand SellStock Longest SubstringWithout RepeatingCharacters Longest Repeating Character Replacement Permutation in String Minimum Window Substring SlidingWindowMaximum Maximum Sum Subarray of Size K FruitInto Baskets Find All Anagrams in a String LongestSubarray of 1'sAfter DeletingOne Element Minimum Size Subarray Sum SubarrayswithK DifferentIntegers Max Consecutive Ones Ill 7.Trees Invert Binary Tree Maximum Depth of Binary Tree Diameter of Binary Tree BalancedBinaryTree Same Tree Subtree of Another Tree Lowest Common Ancestor of a BST BinaryTreeLevelOrderTraversal BinaryTreeRightSideView Count Good Nodes inBinaryTree ValidateBinarySearchTree KthSmallestElementinaBST ConstructBinaryTreefromPreorder andInorderTraversal Binary Tree MaximumPathSum SerializeandDeserializeBinaryTree Path Sum II Symmetric Tree Flatten Binary Tree to Linked List Populating Next Right Pointers in Each Node VerticalOrderTraversalofaBinaryTree 8. Tries",
+    "parser": "PyMuPDF + RapidOCR"
+  },
+  {
+    "page": 5,
+    "text": "Implement Trie (Prefix Tree) DesignAdd andSearchWordsDataStructure Word Search Il Replace Words Maximum XOR of Two Numbers in an Array Longest Word in Dictionary Design Search Autocomplete System Palindrome Pairs Stream of Characters 9. Heap / Priority Queue Core pattern: min-heap/max-heap for top-k, scheduling, running median Kth Largest Element in a Stream Last Stone Weight K Closest Points to Origin Kth Largest Element in an Array Task Scheduler Design Twitter Find Median fromData Stream Merge K Sorted Lists Top K Frequent Elements Reorganize String Meeting Rooms Il Minimum Cost to Connect Sticks Single-Threaded CPU IIPO (Maximize Capital) Process Tasks UsingServers 10. Backtracking",
+    "parser": "PyMuPDF + RapidOCR"
+  },
+  {
+    "page": 6,
+    "text": "Subsets Combination Sum Combination Sum II Permutations PermutationsIl SubsetsIl WordSearch Palindrome Partitioning ILetterCombinationsofaPhoneNumber N-Queens N-Queens II Sudoku Solver Combination Sum IlI GenerateParentheses RestoreIPAddresses Word Break Il Matchsticks to Square Suggested Timeline (for fast prep) Week Topic Goal 1 Arrays + Two Pointers 25-30problems,understandpatternsratherthanmemorize 2 Stack + Linked List 25 problems 3 Binary Search + Sliding Window 25 problems 4 Trees 20 problems (this will take the most time) 5 Tries + Heap 20 problems 6 Backtracking+FullReview Revisitallweakspots+timedmockinterview Tip:Try each problem yourself for 25-30 minutes first. If stuck,look at a hint, not the full solution.After recognition. Let me know if you'd like a detailed study sheet for any specific topic next, with approach hints, time/space",
+    "parser": "PyMuPDF + RapidOCR"
+  }
+]

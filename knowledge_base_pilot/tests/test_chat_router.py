@@ -6,7 +6,8 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-os.environ.setdefault("SQLITE_DATABASE_URL", "sqlite:///tests/test_kb.db")
+os.environ["SQLITE_DATABASE_URL"] = "sqlite:///tests/test_kb.db"
+os.environ["USE_POSTGRES"] = "false"
 os.environ.setdefault("STORAGE_BACKEND", "local")
 os.environ.setdefault("LOCAL_STORAGE_PATH", "tests/test_kb")
 
@@ -107,6 +108,30 @@ class TestChatRouterBroadQuery(unittest.TestCase):
 
         self.assertIn("Rust", result["text"])
         self.assertIn("Programming Rust 2nd Edition.pdf", result["text"])
+
+
+class TestAssistantPromptRegression(unittest.TestCase):
+    @mock.patch("app.rag_engine._stream_cloud")
+    def test_named_ollama_model_receives_learning_system_prompt(self, mock_stream_cloud):
+        from app.rag_engine import _stream_model
+
+        mock_stream_cloud.return_value = iter(["Here is a step-by-step explanation."])
+        output = list(_stream_model(
+            "Teach me everything about Contains Duplicate step by step.",
+            mode="assistant",
+            history=[],
+            source=None,
+            owner_id=1,
+            scope="single",
+            model="ollama-llama3.2",
+        ))
+
+        self.assertEqual(output, ["Here is a step-by-step explanation."])
+        messages = mock_stream_cloud.call_args.args[1]
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertIn("learning assistant", messages[0]["content"])
+        self.assertEqual(messages[-1]["role"], "user")
+        self.assertIn("Contains Duplicate", messages[-1]["content"])
 
 
 if __name__ == "__main__":

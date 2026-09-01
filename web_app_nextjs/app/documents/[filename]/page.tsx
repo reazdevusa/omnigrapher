@@ -86,10 +86,12 @@ function AssistantContent({
   content,
   onJumpPage,
   filename,
+  shimmer = false,
 }: {
   content: string;
   onJumpPage: (page: number) => void;
   filename: string;
+  shimmer?: boolean;
 }) {
   const parts = content.split(/(\[Page \d+\]|\[Source: [^\]]+, Page \d+\])/g);
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, source: string, page: number) => {
@@ -99,7 +101,7 @@ function AssistantContent({
     onJumpPage(page);
   };
   return (
-    <div className="whitespace-pre-wrap">
+    <div className={`whitespace-pre-wrap ${shimmer ? "shimmer-text" : ""}`}>
       {parts.map((part, i) => {
         const pageMatch = part.match(/^\[Page (\d+)\]$/);
         if (pageMatch) {
@@ -479,23 +481,35 @@ export default function DocumentPage() {
       return;
     }
     let accumulated = "";
+    let hasText = false;
     let currentCitations: Citation[] = [];
     let finalMessages: Message[] = updatedMessages;
 
+    const buildAssistant = (content: string) => ({ ...assistantMessage, content, citations: currentCitations });
+
     try {
       for await (const event of api.streamQuery(token, userMsg, mode, history, source, modelForSend, scope)) {
-        if (event.type === "token") {
-          accumulated += event.token;
-          finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: accumulated, citations: currentCitations }];
+        if (event.type === "status" && !hasText) {
+          accumulated = event.message;
+          finalMessages = [...updatedMessages.slice(0, -1), buildAssistant(accumulated)];
+          setMessages(finalMessages);
+        } else if (event.type === "token") {
+          if (!hasText) {
+            accumulated = event.token;
+            hasText = true;
+          } else {
+            accumulated += event.token;
+          }
+          finalMessages = [...updatedMessages.slice(0, -1), buildAssistant(accumulated)];
           setMessages(finalMessages);
         } else if (event.type === "citation") {
           currentCitations = [...currentCitations, { page: event.page, chunk_id: event.chunk_id, source: event.source }];
-          finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: accumulated, citations: currentCitations }];
+          finalMessages = [...updatedMessages.slice(0, -1), buildAssistant(accumulated)];
           setMessages(finalMessages);
         } else if (event.type === "fallback") {
           const friendly = toUserError(event.message || "", event.model || modelForSend);
           setFallback({ reason: event.reason, message: friendly, model: event.model || modelForSend });
-          finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: friendly, citations: currentCitations }];
+          finalMessages = [...updatedMessages.slice(0, -1), buildAssistant(friendly)];
           setMessages(finalMessages);
           break;
         }
@@ -507,14 +521,24 @@ export default function DocumentPage() {
         const refreshed = await refreshAccessToken();
         if (refreshed) {
           try {
+            hasText = false;
             for await (const event of api.streamQuery(token, userMsg, mode, history, source, modelForSend, scope)) {
-              if (event.type === "token") {
-                accumulated += event.token;
-                finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: accumulated, citations: currentCitations }];
+              if (event.type === "status" && !hasText) {
+                accumulated = event.message;
+                finalMessages = [...updatedMessages.slice(0, -1), buildAssistant(accumulated)];
+                setMessages(finalMessages);
+              } else if (event.type === "token") {
+                if (!hasText) {
+                  accumulated = event.token;
+                  hasText = true;
+                } else {
+                  accumulated += event.token;
+                }
+                finalMessages = [...updatedMessages.slice(0, -1), buildAssistant(accumulated)];
                 setMessages(finalMessages);
               } else if (event.type === "citation") {
                 currentCitations = [...currentCitations, { page: event.page, chunk_id: event.chunk_id, source: event.source }];
-                finalMessages = [...updatedMessages.slice(0, -1), { ...assistantMessage, content: accumulated, citations: currentCitations }];
+                finalMessages = [...updatedMessages.slice(0, -1), buildAssistant(accumulated)];
                 setMessages(finalMessages);
               }
             }
@@ -547,15 +571,15 @@ export default function DocumentPage() {
   return (
     <div className="flex h-screen w-full overflow-hidden">
       {!isFullScreen && <Sidebar />}
-      <div className="flex-1 h-full flex flex-row overflow-hidden">
-        <main className={`${isFullScreen ? "w-full" : "w-[45%]"} h-full flex flex-col overflow-hidden p-6`}>
+      <div className="flex-1 h-full flex flex-row overflow-hidden min-w-0">
+        <main className={`${isFullScreen ? "w-full" : "w-[45%]"} h-full flex flex-col overflow-hidden p-6 min-w-0`}>
           {isFullScreen && (
             <Button variant="outline" size="sm" onClick={() => setIsFullScreen(false)} className="fixed top-4 right-4 z-50">
               <Minimize2 className="mr-2 h-4 w-4" /> Exit Full-screen
             </Button>
           )}
-          <div className="w-full flex-1 min-h-0 flex flex-col gap-6">
-            <div className="flex items-center gap-4">
+          <div className="w-full flex-1 min-h-0 flex flex-col gap-6 min-w-0">
+            <div className="flex items-center gap-4 min-w-0 shrink-0">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/">
@@ -567,7 +591,7 @@ export default function DocumentPage() {
                 <TooltipContent>Back to chat</TooltipContent>
               </Tooltip>
               <FileText className="h-8 w-8 text-primary" />
-              <h1 className="text-2xl font-bold truncate">{filename}</h1>
+              <h1 className="text-2xl font-bold truncate min-w-0">{filename}</h1>
               {!isFullScreen && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -579,7 +603,7 @@ export default function DocumentPage() {
                 </Tooltip>
               )}
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap shrink-0">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant={activeTab === "original" ? "default" : "outline"} onClick={() => setActiveTab("original")}>
@@ -609,15 +633,15 @@ export default function DocumentPage() {
 
             <div className="flex-1 w-full min-h-0 pr-2 flex flex-col overflow-hidden overflow-y-auto">
             {activeTab === "original" ? (
-              <div className="relative w-full h-full flex-1 min-h-0 overflow-hidden">
+              <div className="relative w-full flex-1 min-h-0 overflow-hidden">
                 {pdfLoading ? (
                   <p className="text-muted-foreground">Loading PDF...</p>
                 ) : pdfUrl && rawType === "application/pdf" ? (
                   <iframe
                     key={`${pdfUrl}-page-${activePage}`}
                     ref={iframeRef}
-                    src={`${pdfUrl}#page=${activePage}&zoom=page-width`}
-                    className="w-full h-full border-0"
+                    src={`${pdfUrl}#page=${activePage}&view=FitH`}
+                    className="absolute inset-0 w-full h-full border-0"
                     title={filename}
                   />
                 ) : rawUrl && rawType.startsWith("image/") ? (
@@ -868,7 +892,12 @@ export default function DocumentPage() {
                       )}
                     </div>
                     {msg.role === "assistant" ? (
-                      <AssistantContent content={msg.content} onJumpPage={jumpToPage} filename={filename} />
+                      <AssistantContent
+                        content={msg.content}
+                        onJumpPage={jumpToPage}
+                        filename={filename}
+                        shimmer={isStreaming && msg.role === "assistant" && i === messages.length - 1}
+                      />
                     ) : (
                       <div className="whitespace-pre-wrap">{msg.content}</div>
                     )}

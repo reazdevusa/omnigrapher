@@ -108,9 +108,11 @@ const SearchSnippets = memo(function SearchSnippets({
 const ChatMessageContent = memo(function ChatMessageContent({
   content,
   citations,
+  shimmer = false,
 }: {
   content: string;
   citations?: Citation[];
+  shimmer?: boolean;
 }) {
   const parts = content.split(/(\[Source: [^\]]+, Page \d+\]|\[Page \d+\])/g);
   const pageLinks = new Map<number, string>();
@@ -118,7 +120,7 @@ const ChatMessageContent = memo(function ChatMessageContent({
     if (!pageLinks.has(c.page)) pageLinks.set(c.page, c.file_url || `/documents/${encodeURIComponent(c.source)}#page=${c.page}`);
   }
   return (
-    <div className="prose prose-sm max-w-none whitespace-pre-wrap">
+    <div className={`prose prose-sm max-w-none whitespace-pre-wrap ${shimmer ? "shimmer-text" : ""}`}>
       {parts.map((part, i) => {
         const sourceMatch = part.match(/^\[Source: ([^\]]+), Page (\d+)\]$/);
         if (sourceMatch) {
@@ -485,17 +487,25 @@ export function ChatInterface() {
         }
         const messages = [...history, { role: "user" as const, content: textToUse.trim() }];
         let accumulated = "";
+        let hasText = false;
         for await (const event of api.chat(token, modelToUse, messages, mode)) {
-          if (event.type === "token" && typeof event.token === "string") {
-            accumulated += event.token;
-            updatedSession = {
-              ...updatedSession,
-              messages: updatedSession.messages.map((m) =>
-                m.id === assistantMessage.id ? { ...m, content: accumulated } : m
-              ),
-            };
-            updateSession(updatedSession);
+          if (event.type === "status" && !hasText) {
+            accumulated = event.message;
+          } else if (event.type === "token" && typeof event.token === "string") {
+            if (hasText) {
+              accumulated += event.token;
+            } else {
+              accumulated = event.token;
+              hasText = true;
+            }
           }
+          updatedSession = {
+            ...updatedSession,
+            messages: updatedSession.messages.map((m) =>
+              m.id === assistantMessage.id ? { ...m, content: accumulated } : m
+            ),
+          };
+          updateSession(updatedSession);
         }
       } else {
         const selectedModelInfo = models.find((m) => m.id === modelToUse);
@@ -514,10 +524,18 @@ export function ChatInterface() {
           return;
         }
         let accumulated = "";
+        let hasText = false;
         let currentCitations: Citation[] = [];
         for await (const event of api.streamQuery(token, textToUse.trim(), mode, history, undefined, modelToUse, scope)) {
-          if (event.type === "token") {
-            accumulated += event.token;
+          if (event.type === "status" && !hasText) {
+            accumulated = event.message;
+          } else if (event.type === "token") {
+            if (hasText) {
+              accumulated += event.token;
+            } else {
+              accumulated = event.token;
+              hasText = true;
+            }
           } else if (event.type === "citation") {
             currentCitations = [
               ...currentCitations,
@@ -685,31 +703,34 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-background">
+    <div className="flex-1 h-screen overflow-hidden bg-background grid md:grid-cols-[280px_1fr] grid-cols-1 grid-rows-[1fr_auto]">
+      <div className="row-span-2 border-r border-border bg-card p-4 hidden md:flex flex-col shrink-0 h-full">
+        <h3 className="font-semibold text-sm mb-3 text-foreground">Suggested questions</h3>
+        <div className="space-y-2 overflow-y-auto pr-1 flex-1 min-h-0">
+          {exampleQueries.map((q) => (
+            <Button
+              key={q}
+              variant="outline"
+              className="w-full justify-start h-auto py-2 px-3 text-sm text-left"
+              onClick={() => handleSend(q)}
+            >
+              {q}
+            </Button>
+          ))}
+        </div>
+      </div>
       <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div className="w-full space-y-6">
           {session?.messages.length === 0 && (
             <div className="text-center py-12">
               <h1 className="text-3xl font-bold mb-2">What can I help you find?</h1>
               <p className="text-muted-foreground mb-8">Ask a question about your documents or use general knowledge.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {exampleQueries.map((q) => (
-                  <Button
-                    key={q}
-                    variant="outline"
-                    className="justify-start h-auto py-3 px-4"
-                    onClick={() => setInputValue(q)}
-                  >
-                    {q}
-                  </Button>
-                ))}
-              </div>
             </div>
           )}
 
           {session?.messages.map((msg, idx) => (
             <div key={msg.id} className={`group flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] rounded-2xl p-4 ${msg.role === "user" ? "bg-primary text-white" : msg.role === "assistant" && msg.model === "no_llm" ? "bg-muted border border-border" : "bg-card border border-border"}`}>
+              <div className={`max-w-4xl rounded-2xl p-4 ${msg.role === "user" ? "bg-primary text-white" : msg.role === "assistant" && msg.model === "no_llm" ? "bg-muted border border-border" : "bg-card border border-border"}`}>
                 <div className="flex items-center gap-2 mb-1">
                   {msg.role === "assistant" ? (
                     msg.model === "no_llm" ? (
@@ -743,7 +764,11 @@ export function ChatInterface() {
                   msg.role === "assistant" && msg.model === "no_llm" ? (
                     <SearchSnippets content={msg.content} citations={msg.citations} />
                   ) : (
-                    <ChatMessageContent content={msg.content} citations={msg.citations} />
+                    <ChatMessageContent
+                      content={msg.content}
+                      citations={msg.citations}
+                      shimmer={isStreaming && msg.role === "assistant" && idx === session!.messages.length - 1}
+                    />
                   )
                 )}
 
@@ -820,7 +845,7 @@ export function ChatInterface() {
           ))}
           {fallback && (
             <div className="flex justify-start">
-              <div className="max-w-[85%] rounded-2xl p-4 bg-card border border-border space-y-3">
+              <div className="max-w-4xl rounded-2xl p-4 bg-card border border-border space-y-3">
                 <div className="flex items-center gap-2">
                   <Bot className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Model unavailable</span>
@@ -868,7 +893,7 @@ export function ChatInterface() {
       </div>
 
       <div className="border-t border-border p-4 bg-card">
-        <div className="max-w-3xl mx-auto space-y-3">
+        <div className="w-full space-y-3">
           <div className="flex items-center justify-between gap-2">
               <DropdownMenu>
               <Tooltip>

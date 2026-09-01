@@ -5,7 +5,7 @@
   "local": {
     "enabled": true,
     "destination": "D:\\Upwork\\ai_knowledge_base_suite\\omnigrapher\\backups\\local",
-    "interval_hours": 6,
+    "interval_hours": 1,
     "include": [
       ".devin/sessions",
       ".devin/metadata",
@@ -13,6 +13,7 @@
       ".ollama",
       "knowledge_base_pilot/chroma_db",
       "knowledge_base_pilot/kb.db",
+      "knowledge_base_pilot/knowledge_base",
       "knowledge_base_pilot/embeddings",
       "logs",
       "omnigrapher/.devin",
@@ -94,7 +95,7 @@
     "notify_on_failure": true
   },
   "retention": {
-    "local": 7,
+    "local": 168,
     "external": 14,
     "cloud": 90
   }

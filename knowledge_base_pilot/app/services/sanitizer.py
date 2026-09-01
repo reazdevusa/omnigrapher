@@ -49,9 +49,11 @@ _REGEX_PATTERNS = [
 ]
 
 
-def _regex_sanitize(text: str) -> tuple[str, Counter]:
+def _regex_sanitize(text: str, redact_names: bool = True) -> tuple[str, Counter]:
     counts: Counter = Counter()
     for entity, pattern in _REGEX_PATTERNS:
+        if entity == "FULL_NAME" and not redact_names:
+            continue
         replaced, n = pattern.subn(PLACEHOLDERS[entity], text)
         if n:
             text = replaced
@@ -108,9 +110,10 @@ def _get_presidio_analyzer() -> Optional["AnalyzerEngine"]:
         return None
 
 
-def _presidio_sanitize(text: str, analyzer: "AnalyzerEngine") -> tuple[str, Counter]:
+def _presidio_sanitize(text: str, analyzer: "AnalyzerEngine", redact_names: bool = True) -> tuple[str, Counter]:
     try:
-        results = analyzer.analyze(text=text, language="en", entities=[])
+        entities = [] if redact_names else ["US_SSN", "US_BANK_NUMBER", "CREDIT_CARD", "PHONE_NUMBER", "EMAIL_ADDRESS"]
+        results = analyzer.analyze(text=text, language="en", entities=entities)
     except Exception:
         return text, Counter()
 
@@ -182,6 +185,19 @@ def sanitize_and_log(text: str, context: Optional[str] = None) -> str:
             context or "text",
             ", ".join(f"{entity}={count}" for entity, count in counts.items()),
         )
+    return sanitized
+
+
+def sanitize_query(text: str) -> str:
+    if not ENABLE_PII_REDACTION or not text:
+        return defense_in_depth_cleanse(text)
+    sanitized, counts = _regex_sanitize(defense_in_depth_cleanse(text), redact_names=False)
+    analyzer = _get_presidio_analyzer()
+    if analyzer is not None:
+        sanitized, presidio_counts = _presidio_sanitize(sanitized, analyzer, redact_names=False)
+        counts.update(presidio_counts)
+    if counts:
+        logger.info("Redacted explicit sensitive data in query: %s", ", ".join(f"{entity}={count}" for entity, count in counts.items()))
     return sanitized
 
 

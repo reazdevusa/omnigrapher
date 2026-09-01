@@ -47,8 +47,34 @@ omnigrapher\scripts\backup\corruption-check.ps1 -Backup "omnigrapher\backups\loc
 omnigrapher\scripts\backup\restore.ps1 -Backup "omnigrapher\backups\local\<timestamp>" -Confirm
 ```
 
+## Recovery guarantees
+
+Every local run creates and validates:
+
+- A transaction-consistent SQLite snapshot
+- A PostgreSQL custom-format logical dump
+- A PostgreSQL physical base backup
+- A copy of continuously archived PostgreSQL WAL files
+- A Redis RDB snapshot
+- A Chroma data archive
+- Uploaded source documents and extracted files
+- SHA-256 manifests for copied files
+
+PostgreSQL archives completed WAL segments continuously with a five-second archive timeout. This supports recovery to a chosen transaction time after the latest physical base backup. Guaranteed zero-data-loss recovery still requires synchronous replication to storage on another machine.
+
+## Automatic backups
+
+Run PowerShell as the intended service user:
+
+```powershell
+omnigrapher\scripts\backup\register-scheduled-task.ps1 -IntervalHours 1
+```
+
+WAL archiving runs continuously while PostgreSQL is running; the scheduled task creates hourly recovery baselines and logical dumps.
+
 ## Notes
 
 - `.ollama/models` and `chroma_db` are backed up but excluded from Git.
 - Never place backups inside `G:\DO_NOT_DELETE\ALL_SOFTWARE_INSTALLATION_SOURCES`.
 - The scheduled task runs as the current user. Adjust the trigger if needed.
+- Keep at least one verified backup on another physical device; local backups do not protect against host-drive failure.

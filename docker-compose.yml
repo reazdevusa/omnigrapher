@@ -14,6 +14,16 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=mkdir -p /var/lib/postgresql/data/wal_archive && test ! -f /var/lib/postgresql/data/wal_archive/%f && cp %p /var/lib/postgresql/data/wal_archive/%f
+      - -c
+      - archive_timeout=5s
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U awap_user -d knowledge_base"]
       interval: 5s
@@ -36,7 +46,9 @@ services:
       test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/8000"]
       interval: 5s
       timeout: 5s
-      retries: 12
+      retries: 36
+      start_period: 60s
+      start_interval: 5s
 
   redis:
     image: redis:7-alpine
@@ -97,6 +109,8 @@ services:
       - LLM_MODEL=llama3.2:latest
       - EMBED_MODEL=nomic-embed-text:latest
       - GRAPH_RAG_ENABLED=false
+      - PYTHONPATH=/workspace
+      - AEO_DATABASE_URL=sqlite:////data/aeo/aeo_studio.db
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,6 +122,8 @@ services:
         condition: service_healthy
     volumes:
       - ./knowledge_base_pilot:/app
+      - .:/workspace:ro
+      - aeo_data:/data/aeo
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
 
   celery:
@@ -121,8 +137,12 @@ services:
       - CHROMA_PORT=8000
       - OLLAMA_BASE_URL=http://knowledge-base-ollama:11434
       - GRAPH_RAG_ENABLED=false
+      - PYTHONPATH=/workspace
+      - AEO_DATABASE_URL=sqlite:////data/aeo/aeo_studio.db
     volumes:
       - ./knowledge_base_pilot:/app
+      - .:/workspace:ro
+      - aeo_data:/data/aeo
     depends_on:
       postgres:
         condition: service_healthy
@@ -154,3 +174,4 @@ volumes:
   postgres_data:
   chroma_data:
   redis_data:
+  aeo_data:

@@ -47,7 +47,7 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 
 from app.config import get_settings
 from app.database import create_db_session, ParentChunk, Document as DBDocument
-from app.services.sanitizer import sanitize_and_log
+from app.services.sanitizer import sanitize_and_log, sanitize_query
 
 def _with_timeout(fn: Callable[..., Any], *args, timeout: float = 1.5, **kwargs) -> Any:
     """Run a sync function under a strict timeout using a throwaway thread."""
@@ -97,6 +97,13 @@ RAG_QA_PROMPT = PromptTemplate(
     "the question, and do not combine values from different scoring systems. If the context is "
     "truly insufficient, say so.\n\nContext:\n{context_str}\n\nQuestion: {query_str}\n\nAnswer:"
 )
+ASSISTANT_SYSTEM_PROMPT = (
+    "You are a helpful general-purpose learning assistant. Answer legitimate educational, "
+    "technical, coding, analytical, and professional questions directly. Do not refuse a harmless "
+    "request merely because it mentions a named programming problem or asks for detailed teaching. "
+    "When the user asks to learn a topic, provide a structured, step-by-step explanation with examples. "
+    "Ask a clarifying question only when the request is genuinely ambiguous."
+)
 RAG_SYNTHESIS_PROMPT = PromptTemplate(
     "You are a precise document assistant. The text below is the authoritative content of the user's documents. "
     "Use it to answer the question directly and concisely.\n\n"
@@ -108,7 +115,8 @@ RAG_SYNTHESIS_PROMPT = PromptTemplate(
     "5. Avoid meta-commentary like 'Unfortunately, I don't see a document' or 'The provided excerpts'.\n"
     "6. Do not apologize for missing information and do not speculate beyond the supplied text.\n"
     "7. If the exact information is not present, state concisely what the document DOES cover.\n"
-    "8. Keep the answer concise, structured, and grounded in the text.\n\n"
+    "8. Cite every claim with the exact source using the format [Source: filename, Page N].\n"
+    "9. Keep the answer concise, structured, and grounded in the text.\n\n"
     "{context_str}\n\n"
     "Question: {query_str}\n\n"
     "Answer:"
@@ -172,7 +180,7 @@ def _format_context_for_llm(passages: list[dict], top_k: int = 5, max_chars: int
     be disabled for Ollama to strip the bulky source metadata section.
     """
     selected = passages[:top_k]
-    parts = [f"Excerpt [{i}]:\n{clean_text(str(p['text'])[:max_chars])}" for i, p in enumerate(selected, 1)]
+    parts = [f"Excerpt [{i}]:\n{clean_text(str(p['text'])[:max_chars])}\n(Cite as: [Source: {p['source']}, Page {p['page']}])" for i, p in enumerate(selected, 1)]
     if include_sources:
         parts.append("Sources:")
         for i, p in enumerate(selected, 1):
@@ -193,14 +201,58 @@ def _format_source_citations(passages: list[dict]) -> str:
     return "\n".join(out)
 
 
+def _filter_used_citations(answer: str, passages: list[dict]) -> list[dict]:
+    """Return only the passages the model actually referenced in its answer.
+
+    Matches both the explicit [Source: filename, Page N] format and the
+    Excerpt [N] numbering used in the prompt context.
+    """
+    if not answer or not passages:
+        return []
+
+    # Match [Source: filename, Page N] references. The filename may contain commas,
+    # spaces, parentheses, and other characters, but will not contain brackets.
+    source_matches = set(
+        re.findall(r"\[Source:\s*([^\[\]]+),\s*Page\s*(\d+)\s*\]", answer, flags=re.IGNORECASE)
+    )
+
+    # Match Excerpt [N] references.
+    excerpt_matches = set(int(n) for n in re.findall(r"Excerpt\s*\[(\d+)\]", answer, flags=re.IGNORECASE))
+
+    used: list[dict] = []
+    seen_keys: set[tuple[str, int]] = set()
+    for idx, p in enumerate(passages, start=1):
+        key = (p.get("source", ""), int(p.get("page", 0)))
+        if key in seen_keys:
+            continue
+
+        if idx in excerpt_matches:
+            used.append(p)
+            seen_keys.add(key)
+            continue
+
+        if (p.get("source", ""), str(p.get("page", 0))) in source_matches:
+            used.append(p)
+            seen_keys.add(key)
+            continue
+
+        # Also allow a relaxed source match without exact page.
+        if any(src == p.get("source", "") for src, _ in source_matches):
+            used.append(p)
+            seen_keys.add(key)
+            continue
+
+    return used
+
+
 RAG_RELEVANCE_THRESHOLD = float(os.getenv("RAG_RELEVANCE_THRESHOLD", "0.35"))
-RAG_DOCUMENT_RELEVANCE_THRESHOLD = float(os.getenv("RAG_DOCUMENT_RELEVANCE_THRESHOLD", "0.0"))
+RAG_DOCUMENT_RELEVANCE_THRESHOLD = float(os.getenv("RAG_DOCUMENT_RELEVANCE_THRESHOLD", "0.3"))
 NO_LLM_BM25_THRESHOLD = float(os.getenv("NO_LLM_BM25_THRESHOLD", "0.0"))
 
 RERANK_TOP_K = int(os.getenv("RAG_RERANK_TOP_K", "5"))
-HYBRID_DENSE_K = int(os.getenv("RAG_HYBRID_DENSE_K", "20"))
-HYBRID_SPARSE_K = int(os.getenv("RAG_HYBRID_SPARSE_K", "20"))
-HYBRID_FUSION_K = int(os.getenv("RAG_HYBRID_FUSION_K", "15"))
+HYBRID_DENSE_K = int(os.getenv("RAG_HYBRID_DENSE_K", "10"))
+HYBRID_SPARSE_K = int(os.getenv("RAG_HYBRID_SPARSE_K", "10"))
+HYBRID_FUSION_K = int(os.getenv("RAG_HYBRID_FUSION_K", "10"))
 RANKER_MODEL = os.getenv("RAG_RANKER_MODEL", "ms-marco-TinyBERT-L-2-v2")
 
 logger = logging.getLogger(__name__)
@@ -951,11 +1003,11 @@ def retrieve_passages(
     if user_id is None:
         user_id = owner_id
 
-    # When the user has opened a specific document, retrieve ALL chunks for that
-    # document by sql_document_id instead of depending on keyword/embedding match.
-    # This makes "From This Document" robust for any question ("Summarize",
-    # "What are the key findings?", etc.) and for 1-chunk documents.
-    if scope == "single" and source:
+    # For broad summary questions about a specific document, retrieve all chunks
+    # so the model can synthesize the whole document. For specific questions, fall
+    # through to hybrid search within the document so irrelevant sections are not
+    # included.
+    if scope == "single" and source and _is_summary_query(query_text):
         document_id = _resolve_document_id_by_source(user_id, source)
         if document_id is not None:
             file_path = Path(source)
@@ -964,12 +1016,12 @@ def retrieve_passages(
                 file_path,
                 user_id,
                 document_id,
-                timeout=300.0,
+                timeout=60.0,
             )
             if found:
                 parent_passages = _fetch_parent_passages(child_chunks)
                 logger.info(
-                    "[LATENCY] single-doc retrieve total=%.2fms document_id=%s results=%d",
+                    "[LATENCY] single-doc summary retrieve total=%.2fms document_id=%s results=%d",
                     (time.perf_counter() - t0) * 1000,
                     document_id,
                     len(parent_passages),
@@ -1008,7 +1060,7 @@ def retrieve_passages(
         _dense_candidates,
         query_text, source, scope, HYBRID_DENSE_K, threshold,
         user_id, user_role, is_admin,
-        timeout=300.0,
+        timeout=60.0,
     )
     if dense is None:
         dense = []
@@ -1023,19 +1075,30 @@ def retrieve_passages(
     fused = fused[:HYBRID_FUSION_K]
     t4 = time.perf_counter()
 
-    ranked_children = _with_timeout(_rerank_passages, query_text, fused, timeout=300.0)
+    ranked_children = _with_timeout(_rerank_passages, query_text, fused, timeout=60.0)
     if ranked_children is None:
         ranked_children = _fallback_keyword_rerank(query_text, fused)
     t5 = time.perf_counter()
+
+    # Filter out low-relevance passages after reranking so only passages the model
+    # should actually trust are included. This prevents marginally-related documents
+    # from being cited as if they were authoritative.
+    relevance_cutoff = max(threshold, RAG_DOCUMENT_RELEVANCE_THRESHOLD)
+    if ranked_children and relevance_cutoff > 0:
+        ranked_children = [p for p in ranked_children if p.get("rerank_score", 0.0) >= relevance_cutoff]
+        if not ranked_children:
+            ranked_children = _fallback_keyword_rerank(query_text, fused)
+            ranked_children = [p for p in ranked_children if p.get("rerank_score", 0.0) >= relevance_cutoff]
+
     parent_passages = _fetch_parent_passages(ranked_children)
     t6 = time.perf_counter()
 
     try:
         from app.services import graph_rag
 
-        if graph_rag.is_available():
-            if scope == "knowledge_base" and _is_global_query(query_text):
-                summary = _with_timeout(graph_rag.community_summary, query_text, timeout=300.0)
+        if graph_rag.is_available() and _is_global_query(query_text):
+            if scope == "knowledge_base":
+                summary = _with_timeout(graph_rag.community_summary, query_text, timeout=30.0)
                 if summary:
                     parent_passages.insert(
                         0,
@@ -1048,7 +1111,7 @@ def retrieve_passages(
                         },
                     )
             existing = {p["text"] for p in parent_passages}
-            graph_context = _with_timeout(graph_rag.graph_context, query_text, 3, timeout=300.0)
+            graph_context = _with_timeout(graph_rag.graph_context, query_text, 3, timeout=30.0)
             if graph_context:
                 for gp in graph_context:
                     if gp["text"] not in existing:
@@ -1059,7 +1122,7 @@ def retrieve_passages(
 
     t7 = time.perf_counter()
     logger.info(
-        "[LATENCY] retrieve_passages total=%.2fms dense=%.2fms sparse=%.2fms rrf=%.2fms rerank=%.2fms parents=%.2fms graph=%.2fms results=%d",
+        "[LATENCY] retrieve_passages total=%.2fms dense=%.2fms sparse=%.2fms rrf=%.2fms rerank=%.2fms filter=%.2fms postprocess=%.2fms results=%d",
         (t7 - t0) * 1000,
         (t2 - t1) * 1000,
         (t3 - t2) * 1000,
@@ -1087,6 +1150,20 @@ def _is_global_query(query_text: str) -> bool:
         "communities",
         "what are the",
         "key topics",
+    }
+    return any(kw in lower for kw in keywords)
+
+
+def _is_summary_query(query_text: str) -> bool:
+    lower = query_text.lower()
+    keywords = {
+        "summarize",
+        "summary",
+        "key findings",
+        "main concepts",
+        "overview",
+        "what is this document about",
+        "what does this document cover",
     }
     return any(kw in lower for kw in keywords)
 
@@ -1225,6 +1302,7 @@ def _stream_rag(query_text: str, passages: list[dict], history: Optional[list[di
                 content = content[:MAX_HISTORY_CHARS] + "..."
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": query_text})
+    yield {"type": "status", "message": "Synthesizing answer..."}
 
     try:
         with requests.post(
@@ -1255,6 +1333,41 @@ def _stream_rag(query_text: str, passages: list[dict], history: Optional[list[di
         raise RuntimeError(f"Ollama streaming RAG failed: {exc}") from exc
 
 
+def _citation_event(p: dict) -> dict:
+    """Build a frontend citation event from a passage dict."""
+    source = p["source"]
+    page = p["page"]
+    file_url = f"/documents/{urllib.parse.quote(source, safe='')}#page={page}"
+    return {
+        "type": "citation",
+        "document_id": p.get("chunk_id", ""),
+        "file_name": source,
+        "page_number": page,
+        "file_url": file_url,
+        "page": page,
+        "chunk_id": p["chunk_id"],
+        "source": source,
+        "rerank_score": p.get("rerank_score"),
+        "rrf_score": p.get("rrf_score"),
+        "dense_rank": p.get("dense_rank"),
+        "sparse_rank": p.get("sparse_rank"),
+    }
+
+
+def _emit_citations(passages: list[dict]) -> Iterable[dict]:
+    for p in passages:
+        yield _citation_event(p)
+
+
+def _filter_and_emit_citations(answer: str, passages: list[dict]) -> Iterable[dict]:
+    """Emit only citations the model referenced, or all citations if it cited none."""
+    used = _filter_used_citations(answer, passages)
+    if not used:
+        used = passages
+    for p in used:
+        yield _citation_event(p)
+
+
 def _stream_model(
     query_text: str,
     mode: str,
@@ -1269,18 +1382,19 @@ def _stream_model(
 ) -> Iterable[str]:
     """Route a query to the selected model/orchestrator."""
     if model != "no_llm":
-        query_text = sanitize_and_log(query_text, context="query")
+        query_text = sanitize_query(query_text)
         if history:
             history = [
                 {
                     **msg,
-                    "content": sanitize_and_log(msg.get("content", ""), context="history"),
+                    "content": sanitize_query(msg.get("content", "")),
                 }
                 for msg in history
             ]
     is_general_knowledge = mode in ("assistant", "ask_ai_freely")
     passages: list[dict] = []
     if mode == "document":
+        yield {"type": "status", "message": "Retrieving relevant documents..."}
         passages = retrieve_passages(
             query_text, owner_id, source, scope, top_k=5,
             score_threshold=RAG_DOCUMENT_RELEVANCE_THRESHOLD,
@@ -1293,24 +1407,6 @@ def _stream_model(
                 "token": "No relevant context found in indexed documents for your query.",
             }
             return
-        for p in passages:
-            source = p["source"]
-            page = p["page"]
-            file_url = f"/documents/{urllib.parse.quote(source, safe='')}#page={page}"
-            yield {
-                "type": "citation",
-                "document_id": p.get("chunk_id", ""),
-                "file_name": source,
-                "page_number": page,
-                "file_url": file_url,
-                "page": page,
-                "chunk_id": p["chunk_id"],
-                "source": source,
-                "rerank_score": p.get("rerank_score"),
-                "rrf_score": p.get("rrf_score"),
-                "dense_rank": p.get("dense_rank"),
-                "sparse_rank": p.get("sparse_rank"),
-            }
 
     if model == "no_llm":
         # no_llm: pure direct search. Return raw passages and sources; never call an LLM.
@@ -1320,6 +1416,7 @@ def _stream_model(
                 "token": "No relevant context found in indexed documents for your query.",
             }
             return
+        yield from _emit_citations(passages)
         body = "\n\n".join(
             f"Passage {i}:\n{p['text']}"
             for i, p in enumerate(passages, 1)
@@ -1339,8 +1436,13 @@ def _stream_model(
         if mode == "document":
             prompt += f"Context:\n{_format_context_for_llm(passages, top_k=5, max_chars=1500)}\n\n"
         prompt += f"Question: {query_text}"
+        yield {"type": "status", "message": "Agent is reasoning..."}
+        accumulated = ""
         for chunk in _stream_cloud(model, [{"role": "system", "content": prompt}, {"role": "user", "content": query_text}]):
+            accumulated += chunk
             yield chunk
+        if mode == "document":
+            yield from _filter_and_emit_citations(accumulated, passages)
         return
 
     if model != "default":
@@ -1348,23 +1450,36 @@ def _stream_model(
             prompt = RAG_SYNTHESIS_PROMPT.format(context_str=_format_context_for_llm(passages, top_k=5, max_chars=1500), query_str=query_text)
             messages = [{"role": "system", "content": prompt}, {"role": "user", "content": query_text}]
         else:
-            messages = list(history or [])
+            messages = [{"role": "system", "content": ASSISTANT_SYSTEM_PROMPT}]
+            messages.extend(
+                message for message in (history or [])
+                if message.get("role") in {"user", "assistant"} and message.get("content")
+            )
             messages.append({"role": "user", "content": query_text})
+        yield {"type": "status", "message": "Generating answer..."}
+        accumulated = ""
         for chunk in _stream_cloud(model, messages):
+            accumulated += chunk
             yield chunk
+        if mode == "document":
+            yield from _filter_and_emit_citations(accumulated, passages)
         return
 
     # Default local Ollama path
     if is_general_knowledge:
         yield from _stream_assistant(query_text, history)
     else:
-        yield from _stream_rag(query_text, passages, history)
+        accumulated = ""
+        for chunk in _stream_rag(query_text, passages, history):
+            accumulated += chunk
+            yield chunk
+        yield from _filter_and_emit_citations(accumulated, passages)
 
 
 def _stream_assistant(query_text: str, history: Optional[list[dict]] = None) -> Iterable[str]:
     MAX_HISTORY_MSGS = 6
     MAX_HISTORY_CHARS = 500
-    messages = []
+    messages = [{"role": "system", "content": ASSISTANT_SYSTEM_PROMPT}]
     recent_history = (history or [])[-MAX_HISTORY_MSGS:]
     for message in recent_history:
         role = message.get("role")
@@ -1374,6 +1489,7 @@ def _stream_assistant(query_text: str, history: Optional[list[dict]] = None) -> 
                 content = content[:MAX_HISTORY_CHARS] + "..."
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": query_text})
+    yield {"type": "status", "message": "Thinking..."}
 
     try:
         with requests.post(
@@ -1409,13 +1525,13 @@ def ask_ai_freely(
     history: Optional[list[dict]] = None,
 ) -> dict:
     """Answer a general-knowledge question with the local Ollama LLM, skipping RAG entirely."""
-    query_text = sanitize_and_log(query_text, context="query")
-    messages = []
+    query_text = sanitize_query(query_text)
+    messages = [{"role": "system", "content": ASSISTANT_SYSTEM_PROMPT}]
     for message in history or []:
         role = message.get("role")
         content = message.get("content")
         if role in {"user", "assistant", "system"} and isinstance(content, str) and content.strip():
-            messages.append({"role": role, "content": sanitize_and_log(content, context="history")})
+            messages.append({"role": role, "content": sanitize_query(content)})
     messages.append({"role": "user", "content": query_text})
 
     response = requests.post(

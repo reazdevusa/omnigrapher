@@ -44,6 +44,7 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
   Trash2,
   UploadCloud,
   User,
@@ -297,6 +298,7 @@ export function Sidebar() {
   const navItems = [
     { href: "/library", icon: BookOpen, label: "Library" },
     { href: "/projects", icon: FolderKanban, label: "Projects" },
+    { href: "/dashboard/aeo-studio", icon: Sparkles, label: "AEO Studio" },
     { href: "/more", icon: MoreHorizontal, label: "More" },
   ];
 
@@ -469,7 +471,7 @@ export function Sidebar() {
           </Dialog>
         </div>
 
-        <div className="space-y-1 min-h-[80px]">
+        <div className="space-y-1 min-h-[80px] max-h-[300px] overflow-y-auto overflow-x-hidden pr-1">
           {isLoadingDocs ? (
             <p className="text-xs text-muted-foreground flex items-center"><Loader2 className="h-3 w-3 animate-spin mr-1" /> Loading documents...</p>
           ) : (
@@ -478,10 +480,10 @@ export function Sidebar() {
                 key={doc.filename}
                 className="flex items-start justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted group"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
+                <div className="min-w-0 flex-1 overflow-x-auto">
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
                     {doc.status === "failed" && <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />}
-                    <Link href={`/documents/${encodeDocumentPath(doc.filename)}`} className="text-sm truncate hover:underline" title={doc.filename}>{doc.filename}</Link>
+                    <Link href={`/documents/${encodeDocumentPath(doc.filename)}`} className="text-sm whitespace-nowrap hover:underline" title={doc.filename}>{doc.filename}</Link>
                   </div>
                   {doc.status === "failed" && (
                     <p className="mt-0.5 truncate text-[11px] text-destructive" title={doc.error}>

@@ -1,0 +1,67 @@
+name: Security Red-Team Suite
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  security-tests:
+    name: Run security hardening tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: knowledge_base_pilot
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libpq-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start test Redis
+        run: |
+          echo "REDIS_URL=redis://localhost:6379/0" >> $GITHUB_ENV
+          echo "CHUNK_HMAC_KEY=test-hmac-key-for-ci" >> $GITHUB_ENV
+          echo "SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
+
+      - name: Run security red-team suite
+        env:
+          REDIS_URL: redis://localhost:6379/0
+          CHUNK_HMAC_KEY: test-hmac-key-for-ci
+          SECRET_KEY: test-secret-key-for-ci
+          SECURE_COOKIES: "false"
+        run: |
+          pytest tests/test_security_suite.py -v --tb=short
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-test-report
+          path: knowledge_base_pilot/.pytest_cache

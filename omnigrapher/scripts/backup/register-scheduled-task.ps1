@@ -6,7 +6,7 @@
 param(
     [string]$Name = "OmniGrapher-Backup",
     [string]$Script = "$PSScriptRoot\run-backup.ps1",
-    [string]$IntervalHours = 6
+    [string]$IntervalHours = 1
 )
 
 $action = New-ScheduledTaskAction -Execute "pwsh.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Script`""

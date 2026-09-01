@@ -5,7 +5,8 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-os.environ.setdefault("SQLITE_DATABASE_URL", "sqlite:///tests/test_kb.db")
+os.environ["SQLITE_DATABASE_URL"] = "sqlite:///tests/test_kb.db"
+os.environ["USE_POSTGRES"] = "false"
 os.environ.setdefault("STORAGE_BACKEND", "local")
 os.environ.setdefault("LOCAL_STORAGE_PATH", "tests/test_kb")
 

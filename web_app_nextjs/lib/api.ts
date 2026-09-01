@@ -301,6 +301,7 @@ export async function saveChatHistory(
 
 export type StreamEvent =
   | { type: "token"; token: string }
+  | { type: "status"; message: string }
   | { type: "citation"; page: number; chunk_id: string; source: string; document_id?: string; file_name?: string; page_number?: number; file_url?: string }
   | { type: "fallback"; reason: string; message: string; model: string }
   | { type: "error"; error: string }
@@ -392,6 +393,8 @@ export async function* streamQuery(
         }
         if (typeof payload.token === "string" && payload.token.length > 0) {
           receivedToken = true;
+          yield payload as StreamEvent;
+        } else if (payload.type === "status") {
           yield payload as StreamEvent;
         } else if (payload.type === "citation" || payload.type === "fallback") {
           if (payload.type === "fallback") receivedToken = true;
@@ -617,6 +620,8 @@ export async function* chat(
         }
         if (typeof payload.token === "string" && payload.token.length > 0) {
           receivedToken = true;
+          yield payload as StreamEvent;
+        } else if (payload.type === "status") {
           yield payload as StreamEvent;
         } else if (payload.type === "citation" || payload.type === "fallback") {
           if (payload.type === "fallback") receivedToken = true;

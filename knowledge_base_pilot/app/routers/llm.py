@@ -712,6 +712,8 @@ def chat(
         def _event_generator():
             received = False
             error = False
+            status_data = json.dumps({"type": "status", "message": "Thinking..."}, ensure_ascii=False)
+            yield f"data: {status_data}\n\n"
             try:
                 for chunk in provider.generate_stream(
                     model_name,
