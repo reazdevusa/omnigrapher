@@ -57,6 +57,12 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "db_username" {
+  description = "PostgreSQL superuser username"
+  type        = string
+  default     = "kb_admin"
+}
+
 variable "db_password" {
   description = "PostgreSQL superuser password"
   type        = string

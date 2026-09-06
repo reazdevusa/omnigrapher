@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
 from urllib.parse import unquote
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,36 @@ from app.schemas import (
 # ---------------------------------------------------------------------------
 # App init
 # ---------------------------------------------------------------------------
-app = FastAPI(title="AI Knowledge Base API")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start heavy work in the background so the HTTP server can accept requests
+    immediately and health checks stay instant."""
+
+    async def _background_init() -> None:
+        loop = asyncio.get_running_loop()
+        try:
+            # Run blocking DB migrations/schema setup in a thread so we don't
+            # block the event loop.
+            await loop.run_in_executor(None, init_db)
+            from app.tasks.ingestion import recover_stale_tasks
+
+            await loop.run_in_executor(None, recover_stale_tasks)
+            start_ingestion_worker()
+            # Pre-load the local Ollama model so the first user request doesn't
+            # wait for GPU/CPU allocation.
+            threading.Thread(target=_warmup_ollama, daemon=True).start()
+        except Exception:
+            logger.exception("Background startup initialization failed")
+
+    task = asyncio.create_task(_background_init())
+    yield
+    task.cancel()
+    stop_ingestion_worker()
+
+
+app = FastAPI(title="AI Knowledge Base API", lifespan=lifespan)
 
 origins = [origin.strip() for origin in os.getenv(
     "CORS_ORIGINS",
@@ -123,7 +153,6 @@ app.add_middleware(
 )
 app.add_middleware(SecurityHeadersMiddleware)
 
-init_db()
 app.include_router(ai_router.router, prefix="/api")
 app.include_router(chat_router.router, prefix="/api")
 app.include_router(connectors_router.router, prefix="/api")
@@ -293,22 +322,14 @@ def set_api_key(
     return {"success": True, "provider": payload.provider}
 
 
-@app.on_event("startup")
-def start_background_services():
-    # Recover documents stuck in parsing/processing from a previous crash.
-    from app.tasks.ingestion import recover_stale_tasks
-    recovered = recover_stale_tasks()
-    if recovered:
-        logger.info("Recovered %d stale document(s) on startup", recovered)
-
-    start_ingestion_worker()
-    # Pre-load the local Ollama model so the first user request doesn't wait for GPU allocation.
-    threading.Thread(target=_warmup_ollama, daemon=True).start()
+@app.get("/health")
+def health_ok():
+    return {"status": "ok", "service": "knowledge-base-backend"}
 
 
-@app.on_event("shutdown")
-def stop_background_services():
-    stop_ingestion_worker()
+@app.get("/api/v1/health")
+def api_health_ok():
+    return {"status": "ok", "service": "knowledge-base-backend"}
 
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434"

@@ -15,9 +15,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import httpx
 from dotenv import load_dotenv
 
 from app.providers import LLMResponse, Message, get_provider
@@ -36,32 +34,22 @@ EXTERNAL_DRIVE_PATH = os.getenv(
 )
 
 
-def is_external_drive_ready(path: Optional[str] = None) -> bool:
+def is_external_drive_ready(path: str = "G:/DO_NOT_DELETE") -> bool:
     """Check whether the external storage drive is accessible.
 
     Returns True if the path exists and is a directory, False otherwise.
     Used as a pre-flight check before routing to PEFT engine.
     """
-    check_path = path or EXTERNAL_DRIVE_PATH
-    return os.path.exists(check_path)
+    return os.path.exists(path)
 
 
 # ---------------------------------------------------------------------------
-# HTTP Session with retry & circuit breaker
+# HTTP Client with retry & circuit breaker
 # ---------------------------------------------------------------------------
-def _build_http_session(retries: int = 3) -> requests.Session:
-    """Build an HTTP session with automatic retries on 5xx and connection errors."""
-    session = requests.Session()
-    retry_strategy = Retry(
-        total=retries,
-        backoff_factor=0.3,
-        status_forcelist=[500, 502, 503, 504],
-        allowed_methods=["POST", "GET"],
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
+def _build_http_client(retries: int = 3) -> httpx.Client:
+    """Build an httpx client with automatic retries on connection errors."""
+    transport = httpx.HTTPTransport(retries=retries)
+    return httpx.Client(transport=transport)
 
 
 # ---------------------------------------------------------------------------
@@ -113,13 +101,15 @@ class LLMService:
         self.adapter_map = adapter_map if adapter_map is not None else _load_adapter_map()
         self.fallback_model = fallback_model or DEFAULT_LLM_MODEL
 
-        # Timeout configuration: (connect_timeout, read_timeout)
+        # Timeout configuration: connect 5s, read 60s
         connect_timeout = float(os.getenv("PEFT_ENGINE_CONNECT_TIMEOUT", "5.0"))
         read_timeout = float(os.getenv("PEFT_ENGINE_READ_TIMEOUT", "60.0"))
-        self.peft_engine_timeout = (connect_timeout, read_timeout)
+        self.peft_engine_timeout = httpx.Timeout(
+            read_timeout, connect=connect_timeout
+        )
 
-        # Build resilient HTTP session with retries
-        self._http_session = _build_http_session(retries=3)
+        # Build resilient HTTP client with retries
+        self._http_client = _build_http_client(retries=3)
 
     def resolve_adapter_name(self, domain: Optional[str], adapter: Optional[str]) -> Optional[str]:
         """Resolve a domain or explicit adapter name to the final adapter name."""
@@ -139,7 +129,7 @@ class LLMService:
         # Drive disconnection guard — skip when running inside Docker
         # (the PEFT engine on the host validates its own storage access)
         skip_drive_check = _bool_env("PEFT_SKIP_DRIVE_CHECK", False)
-        if not skip_drive_check and not is_external_drive_ready():
+        if not skip_drive_check and not is_external_drive_ready(EXTERNAL_DRIVE_PATH):
             logger.warning(
                 "External drive not accessible at '%s'. "
                 "Skipping PEFT engine call — routing to fallback.",
@@ -158,11 +148,14 @@ class LLMService:
             "stream": False,
         }
         logger.debug("Calling PEFT engine at %s with model=%s", url, adapter_name)
-        response = self._http_session.post(
-            url, json=payload, timeout=self.peft_engine_timeout
-        )
-        response.raise_for_status()
-        data = response.json()
+        try:
+            response = self._http_client.post(
+                url, json=payload, timeout=self.peft_engine_timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ConnectionError(f"PEFT engine call failed: {exc}") from exc
 
         choice = data.get("choices", [{}])[0]
         message = choice.get("message", {})

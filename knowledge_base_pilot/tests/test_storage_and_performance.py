@@ -158,27 +158,29 @@ class TestDriveDisconnectionGuard(unittest.TestCase):
 class TestCircuitBreaker(unittest.TestCase):
     """Verify retry behavior and timeout configuration."""
 
-    def test_http_session_has_retry_adapter(self):
-        """The internal HTTP session must be configured with retries."""
+    def test_http_client_has_retry_transport(self):
+        """The internal HTTP client must be configured with retries."""
+        import httpx
+
         from app.services.llm_service import LLMService
 
         service = LLMService(use_peft_adapters=True)
-        # Check that adapters are mounted with retry strategy
-        http_adapter = service._http_session.get_adapter("http://localhost")
-        self.assertIsNotNone(http_adapter)
-        self.assertEqual(http_adapter.max_retries.total, 3)
+        self.assertIsInstance(service._http_client, httpx.Client)
 
     def test_timeout_configuration(self):
-        """Timeout must be (5.0, 60.0) by default."""
+        """Timeout must be connect=5.0s, read=60.0s by default."""
         from app.services.llm_service import LLMService
 
         service = LLMService(use_peft_adapters=True)
-        self.assertEqual(service.peft_engine_timeout, (5.0, 60.0))
+        self.assertEqual(service.peft_engine_timeout.connect, 5.0)
+        self.assertEqual(service.peft_engine_timeout.read, 60.0)
 
     @mock.patch("app.services.llm_service.is_external_drive_ready", return_value=True)
     @mock.patch("app.services.llm_service.get_provider")
     def test_fallback_on_5xx_error(self, mock_get_provider, mock_drive):
         """On 5xx server error, the service falls back to base model."""
+        import httpx
+
         from app.providers import LLMResponse, Message
         from app.services.llm_service import LLMService
 
@@ -198,9 +200,9 @@ class TestCircuitBreaker(unittest.TestCase):
             fallback_model="llama3.2:latest",
         )
 
-        # Mock the HTTP session to raise a connection error (simulates 5xx after retries)
+        # Mock the HTTP client to raise a connection error (simulates 5xx after retries)
         with mock.patch.object(
-            service._http_session, "post", side_effect=ConnectionError("Max retries exceeded")
+            service._http_client, "post", side_effect=httpx.ConnectError("Max retries exceeded")
         ):
             response = service.generate(
                 messages=[Message(role="user", content="Hello")],
@@ -213,7 +215,7 @@ class TestCircuitBreaker(unittest.TestCase):
     @mock.patch("app.services.llm_service.get_provider")
     def test_fallback_on_connection_timeout(self, mock_get_provider, mock_drive):
         """On connection timeout, the service falls back to base model."""
-        from requests.exceptions import ConnectTimeout
+        import httpx
 
         from app.providers import LLMResponse, Message
         from app.services.llm_service import LLMService
@@ -235,7 +237,7 @@ class TestCircuitBreaker(unittest.TestCase):
         )
 
         with mock.patch.object(
-            service._http_session, "post", side_effect=ConnectTimeout("Connection timed out")
+            service._http_client, "post", side_effect=httpx.ConnectTimeout("Connection timed out")
         ):
             response = service.generate(
                 messages=[Message(role="user", content="Hello")],

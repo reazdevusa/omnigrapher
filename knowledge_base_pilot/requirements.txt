@@ -8,6 +8,7 @@ llama-index-embeddings-ollama
 chromadb==0.6.3
 python-dotenv
 requests
+httpx
 sqlalchemy
 psycopg2-binary
 python-jose[cryptography]

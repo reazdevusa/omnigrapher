@@ -126,7 +126,9 @@ class TestAssistantPromptRegression(unittest.TestCase):
             model="ollama-llama3.2",
         ))
 
-        self.assertEqual(output, ["Here is a step-by-step explanation."])
+        # The stream may emit status events before content; filter them out.
+        content = [item for item in output if not (isinstance(item, dict) and item.get("type") == "status")]
+        self.assertEqual(content, ["Here is a step-by-step explanation."])
         messages = mock_stream_cloud.call_args.args[1]
         self.assertEqual(messages[0]["role"], "system")
         self.assertIn("learning assistant", messages[0]["content"])

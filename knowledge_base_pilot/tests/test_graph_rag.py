@@ -137,7 +137,10 @@ class TestRetrievePassagesGraphAugmentation(unittest.TestCase):
         with mock.patch.object(rag_engine, "GRAPH_RAG_ENABLED", "true", create=True), \
              mock.patch("app.services.graph_rag.is_available", return_value=True), \
              mock.patch("app.services.graph_rag.graph_context", return_value=[graph_passage]):
-            results = rag_engine.retrieve_passages("How does System A relate to Service B?", top_k=5)
+            # Graph augmentation only runs for global/corpus-level queries.
+            results = rag_engine.retrieve_passages(
+                "What are the main themes across System A and Service B?", top_k=5
+            )
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["text"], graph_passage["text"])

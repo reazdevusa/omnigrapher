@@ -9,11 +9,17 @@ import logging
 import multiprocessing as mp
 import os
 import re
-import resource
 import signal
 import tempfile
 from pathlib import Path
 from typing import Any, Optional, Union
+
+try:
+    import resource
+except ImportError:  # Windows: no rlimit support
+    resource = None  # type: ignore[assignment]
+
+_HAS_SIGALRM = hasattr(signal, "SIGALRM") and hasattr(signal, "alarm")
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +36,8 @@ ALLOWED_NAMESPACES = {
 
 def _set_sandbox_limits() -> None:
     """Set tight CPU and memory limits for the current worker process."""
+    if resource is None:
+        return
     # Soft CPU time limit; the process will receive SIGXCPU when exceeded.
     try:
         resource.setrlimit(resource.RLIMIT_CPU, (CPU_LIMIT_SECONDS, CPU_LIMIT_SECONDS + 1))
@@ -76,8 +84,9 @@ def _parse_worker(payload_path: str) -> dict[str, Any]:
     parsed data back to the parent.
     """
     _set_sandbox_limits()
-    signal.signal(signal.SIGALRM, lambda _signum, _frame: (_ for _ in ()).throw(XMLTimeoutError("XML parsing timed out")))
-    signal.alarm(CPU_LIMIT_SECONDS)
+    if _HAS_SIGALRM:
+        signal.signal(signal.SIGALRM, lambda _signum, _frame: (_ for _ in ()).throw(XMLTimeoutError("XML parsing timed out")))
+        signal.alarm(CPU_LIMIT_SECONDS)
 
     try:
         payload = Path(payload_path).read_bytes()
@@ -122,7 +131,8 @@ def _parse_worker(payload_path: str) -> dict[str, Any]:
     except Exception as exc:
         raise XMLParseError(f"XML parsing failed: {exc}") from exc
     finally:
-        signal.alarm(0)
+        if _HAS_SIGALRM:
+            signal.alarm(0)
 
 
 def safe_parse(

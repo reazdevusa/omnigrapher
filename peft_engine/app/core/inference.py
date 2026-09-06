@@ -12,10 +12,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import torch
-from peft import PeftModel
+from peft import PeftConfig, PeftModel
+from peft.utils.save_and_load import set_peft_model_state_dict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from peft_engine.app.config import Settings, get_settings
+from peft_engine.app.core.trainer import get_cached_adapter_weights
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +57,25 @@ class PeftInferenceEngine:
             quantization_config=bnb_config,
             device_map="auto",
             torch_dtype=compute_dtype,
+            attn_implementation="sdpa",
         )
 
         self._tokenizer = AutoTokenizer.from_pretrained(self.settings.base_model)
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
+        # Pin base model in VRAM so token generation runs 100% from memory.
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            self._model.cuda()
+            logger.info("Base model pinned in VRAM — no further disk reads during inference.")
+
         elapsed = time.time() - start
         logger.info("Base model loaded in %.1fs", elapsed)
+
+    def load_base_model(self) -> None:
+        """Load the base model and pin it in VRAM for inference."""
+        self._load_base_model()
 
     def _load_adapter(self, adapter_name: str) -> bool:
         """Load or switch to a LoRA adapter."""
@@ -79,14 +92,28 @@ class PeftInferenceEngine:
                 logger.debug("Switched to adapter: %s", adapter_name)
             return True
 
-        # Load new adapter
+        # Load new adapter — use pre-loaded weights from RAM when available to
+        # avoid hitting the external drive during chat turns.
         logger.info("Loading adapter: %s from %s", adapter_name, adapter_dir)
         start = time.time()
-        self._model = PeftModel.from_pretrained(
-            self._model,
-            str(adapter_dir),
-            adapter_name=adapter_name,
-        )
+        try:
+            peft_config = PeftConfig.from_pretrained(str(adapter_dir))
+            self._model.add_adapter(adapter_name, peft_config)
+            cached_weights = get_cached_adapter_weights(adapter_name)
+            if cached_weights is not None:
+                set_peft_model_state_dict(
+                    self._model, cached_weights, adapter_name=adapter_name
+                )
+            else:
+                self._model.load_adapter(str(adapter_dir), adapter_name)
+            self._model.set_adapter(adapter_name)
+        except Exception:
+            # Fallback: full disk load if in-memory path fails
+            self._model = PeftModel.from_pretrained(
+                self._model,
+                str(adapter_dir),
+                adapter_name=adapter_name,
+            )
         self._adapter_cache[adapter_name] = True
         self._current_adapter = adapter_name
         elapsed = time.time() - start

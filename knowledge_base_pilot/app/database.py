@@ -1,4 +1,5 @@
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,20 @@ raw_database_url = os.getenv("DATABASE_URL", "")
 SQLITE_URL = os.getenv("SQLITE_DATABASE_URL") or (
     raw_database_url if raw_database_url.startswith("sqlite") else f"sqlite:///{root_dir / 'kb.db'}"
 )
+
+
+def _resolve_sqlite_url(url: str) -> str:
+    """Resolve relative sqlite:/// paths against the backend root so tests work from any CWD."""
+    prefix = "sqlite:///"
+    if not url.startswith(prefix) or url.startswith("sqlite:////"):
+        return url
+    db_path = Path(url[len(prefix):])
+    if not db_path.is_absolute():
+        db_path = root_dir / db_path
+    return f"sqlite:///{db_path.as_posix()}"
+
+
+SQLITE_URL = _resolve_sqlite_url(SQLITE_URL)
 PG_URL = os.getenv("PG_DATABASE_URL") or (
     raw_database_url if raw_database_url.startswith("postgresql") else ""
 )
@@ -311,6 +326,10 @@ def create_db_session() -> Session:
 
 
 def get_db():
+    # Lazily initialize the database schema on first use so the ASGI server can
+    # start accepting requests immediately while migrations run in the background.
+    if not _db_ready.is_set():
+        init_db()
     db = create_db_session()
     try:
         yield db
@@ -345,9 +364,19 @@ def _ensure_columns(engine) -> None:
                     conn.execute(text(f"ALTER TABLE documents ADD COLUMN {column_name} {column_type}"))
 
 
+_db_ready = threading.Event()
+_db_lock = threading.Lock()
+
+
 def init_db() -> None:
-    Base.metadata.create_all(bind=sqlite_engine)
-    _ensure_columns(sqlite_engine)
-    if pg_engine is not None:
-        Base.metadata.create_all(bind=pg_engine)
-        _ensure_columns(pg_engine)
+    # Idempotent, guarded by a lock so background startup and request handlers
+    # can both call it safely without double-running schema migrations.
+    with _db_lock:
+        if _db_ready.is_set():
+            return
+        Base.metadata.create_all(bind=sqlite_engine)
+        _ensure_columns(sqlite_engine)
+        if pg_engine is not None:
+            Base.metadata.create_all(bind=pg_engine)
+            _ensure_columns(pg_engine)
+        _db_ready.set()

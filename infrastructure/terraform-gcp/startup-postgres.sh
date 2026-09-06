@@ -6,8 +6,9 @@ apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release so
 # Docker
 curl -fsSL https://get.docker.com | sh
 systemctl enable --now docker
-# Persistent data volume
+# Persistent data volumes
 mkdir -p /data/postgres
+mkdir -p /data/chroma
 # Run pgvector with Docker
 docker run -d \
   --name pgvector \
@@ -19,3 +20,13 @@ docker run -d \
   -v /data/postgres:/var/lib/postgresql/data \
   -p 5432:5432 \
   pgvector/pgvector:pg16
+# Run ChromaDB on the same VM (port 8000) for low-cost colocation
+docker run -d \
+  --name chroma \
+  --restart unless-stopped \
+  -e IS_PERSISTENT=TRUE \
+  -e PERSIST_DIRECTORY=/chroma/chroma \
+  -e ANONYMIZED_TELEMETRY=FALSE \
+  -v /data/chroma:/chroma/chroma \
+  -p 8000:8000 \
+  chromadb/chroma:0.6.3

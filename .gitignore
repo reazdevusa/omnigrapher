@@ -62,6 +62,13 @@ peft_engine/.env
 peft_engine/adapters/
 peft_engine/outputs/
 
+# Terraform secrets (contains db_password; keep local only)
+infrastructure/terraform-gcp/terraform.tfvars
+*.tfvars
+
+# Test artifacts
+knowledge_base_pilot/tests/test_kb/
+
 # OS
 Thumbs.db
 .DS_Store

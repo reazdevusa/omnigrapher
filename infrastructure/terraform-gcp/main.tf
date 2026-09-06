@@ -96,7 +96,7 @@ resource "google_compute_firewall" "allow_internal" {
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "5432", "6379"]
+    ports    = ["22", "5432", "6379", "8000"]
   }
 }
 
@@ -192,7 +192,7 @@ resource "google_cloud_run_v2_service" "app" {
       image = var.app_image != "" ? var.app_image : "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.app.repository_id}/app:latest"
 
       ports {
-        container_port = 8000
+        container_port = 8001
       }
 
       resources {
@@ -210,6 +210,18 @@ resource "google_cloud_run_v2_service" "app" {
       env {
         name  = "REDIS_URL"
         value = "redis://${google_compute_instance.redis.network_interface[0].network_ip}:6379"
+      }
+      env {
+        name  = "CHROMA_HOST"
+        value = google_compute_instance.postgres.network_interface[0].network_ip
+      }
+      env {
+        name  = "CHROMA_PORT"
+        value = "8000"
+      }
+      env {
+        name  = "CHROMA_SSL"
+        value = "false"
       }
       env {
         name  = "R2_BUCKET_NAME"

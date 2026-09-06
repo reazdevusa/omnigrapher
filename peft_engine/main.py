@@ -1,7 +1,6 @@
 """Standalone FastAPI runner for the OmniGrapher PEFT engine."""
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,13 +21,6 @@ from peft_engine.app.config import (  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
-def _bool_env(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.lower() in ("1", "true", "yes", "on")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup warmup and shutdown cleanup."""
@@ -43,28 +35,8 @@ async def lifespan(app: FastAPI):
             EXTERNAL_STORAGE_BASE,
         )
 
-    # Startup warmup: preload base model into VRAM and adapter weights into RAM
-    preload_on_startup = _bool_env("PEFT_PRELOAD_ON_STARTUP", False)
-    if preload_on_startup:
-        try:
-            from peft_engine.app.core.trainer import (
-                AdapterTrainer,
-                preload_all_adapters,
-            )
-
-            logger.info("Startup warmup: loading base model into VRAM...")
-            trainer = AdapterTrainer(settings)
-            trainer.load_base_model(pin_vram=True)
-            logger.info("Startup warmup: base model loaded and pinned in VRAM.")
-
-            # Pre-load all adapter weights into RAM for sub-10ms swapping
-            adapter_dir = Path(settings.adapter_dir)
-            preload_all_adapters(adapter_dir)
-            logger.info("Startup warmup: adapter weights pre-loaded into RAM.")
-        except Exception as exc:
-            logger.warning("Startup warmup failed (non-fatal, continuing without warmup): %s", exc)
-
     # Initialize inference engine and register it with routes
+    engine = None
     try:
         from peft_engine.app.core.inference import PeftInferenceEngine
         import peft_engine.app.api.routes as routes_module
@@ -75,6 +47,23 @@ async def lifespan(app: FastAPI):
         logger.info("Inference engine initialized. Available adapters: %s", available)
     except Exception as exc:
         logger.warning("Could not initialize inference engine (non-fatal): %s", exc)
+
+    # Startup warmup: preload base model into VRAM and adapter weights into RAM
+    if settings.preload_on_startup:
+        try:
+            from peft_engine.app.core.trainer import preload_all_adapters
+
+            logger.info("Startup warmup: loading base model into VRAM...")
+            if engine is not None:
+                engine.load_base_model()
+            logger.info("Startup warmup: base model loaded and pinned in VRAM.")
+
+            # Pre-load all adapter weights into RAM for sub-10ms swapping
+            adapter_dir = Path(settings.adapter_dir)
+            preload_all_adapters(adapter_dir)
+            logger.info("Startup warmup: adapter weights pre-loaded into RAM.")
+        except Exception as exc:
+            logger.warning("Startup warmup failed (non-fatal, continuing without warmup): %s", exc)
 
     yield  # Application runs here
 

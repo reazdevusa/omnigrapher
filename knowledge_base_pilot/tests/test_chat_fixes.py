@@ -22,8 +22,9 @@ from app.services.crag_workflow import run_crag_workflow
 class TestOllamaProvider(unittest.TestCase):
     def test_strips_ollama_prefix(self):
         p = OllamaProvider()
-        self.assertEqual(p._ollama_model_name("ollama-llama3.2"), "llama3.2")
-        self.assertEqual(p._ollama_model_name("ollama-gemma2"), "gemma2")
+        self.assertEqual(p._ollama_model_name("ollama-llama3.2"), "llama3.2:latest")
+        self.assertEqual(p._ollama_model_name("ollama-gemma2"), "gemma2:latest")
+        self.assertEqual(p._ollama_model_name("ollama-llama3.2:8b"), "llama3.2:8b")
 
     @mock.patch.dict(os.environ, {"OLLAMA_HOST": "", "OLLAMA_BASE_URL": ""}, clear=False)
     def test_default_host_uses_loopback(self):

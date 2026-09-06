@@ -63,15 +63,22 @@ def preload_adapter_to_memory(adapter_name: str, adapter_path: Path) -> None:
     try:
         import torch
         adapter_file = adapter_path / "adapter_model.safetensors"
-        if not adapter_file.exists():
-            adapter_file = adapter_path / "adapter_model.bin"
         if adapter_file.exists():
-            weights = torch.load(str(adapter_file), map_location="cpu", weights_only=True)
-            with _cache_lock:
-                _adapter_cache[adapter_name] = weights
-            logger.info("Adapter '%s' pre-loaded into RAM (%d tensors)", adapter_name, len(weights))
+            try:
+                from safetensors.torch import load_file
+
+                weights = load_file(str(adapter_file))
+            except ImportError:
+                weights = torch.load(str(adapter_file), map_location="cpu", weights_only=True)
         else:
-            logger.warning("No adapter weights found at %s", adapter_path)
+            adapter_file = adapter_path / "adapter_model.bin"
+            if not adapter_file.exists():
+                logger.warning("No adapter weights found at %s", adapter_path)
+                return
+            weights = torch.load(str(adapter_file), map_location="cpu", weights_only=True)
+        with _cache_lock:
+            _adapter_cache[adapter_name] = weights
+        logger.info("Adapter '%s' pre-loaded into RAM (%d tensors)", adapter_name, len(weights))
     except Exception as exc:
         logger.warning("Could not pre-load adapter '%s': %s", adapter_name, exc)
 

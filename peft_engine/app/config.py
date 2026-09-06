@@ -6,51 +6,36 @@ never touch the C: drive. All caching is redirected to the external storage path
 """
 
 import os
-from dataclasses import dataclass, field
-from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
 
 # ---------------------------------------------------------------------------
 # External storage path redirection (protects C: drive)
 # ---------------------------------------------------------------------------
-EXTERNAL_STORAGE_BASE = os.getenv(
-    "OMNIGRAPHER_STORAGE_BASE", "G:/DO_NOT_DELETE/OmniGrapher_AI_Storage"
-)
+STORAGE_BASE = Path(os.getenv("OMNIGRAPHER_STORAGE_BASE", "G:/DO_NOT_DELETE/OmniGrapher_AI_Storage"))
 
-def _init_storage_directories() -> None:
-    """Create the external storage folder structure if it does not exist."""
-    subdirs = ["huggingface", "torch_cache", "adapters", "temp"]
-    for subdir in subdirs:
-        path = os.path.join(EXTERNAL_STORAGE_BASE, subdir)
-        os.makedirs(path, exist_ok=True)
+# Ensure required storage directories exist on G: drive
+if STORAGE_BASE.parent.is_dir():
+    for folder in ["huggingface", "torch_cache", "adapters", "temp"]:
+        (STORAGE_BASE / folder).mkdir(parents=True, exist_ok=True)
 
+# Set environment variables BEFORE importing torch or transformers
+os.environ["HF_HOME"] = str(STORAGE_BASE / "huggingface")
+os.environ["TORCH_HOME"] = str(STORAGE_BASE / "torch_cache")
+os.environ["TMPDIR"] = str(STORAGE_BASE / "temp")
+os.environ["TEMP"] = str(STORAGE_BASE / "temp")
+os.environ["TMP"] = str(STORAGE_BASE / "temp")
 
-def _apply_storage_env_overrides() -> None:
-    """Inject environment variables BEFORE importing transformers/torch/huggingface_hub.
-
-    This ensures all model downloads, caches, and temp files go to the external drive.
-    """
-    os.environ.setdefault("HF_HOME", f"{EXTERNAL_STORAGE_BASE}/huggingface")
-    os.environ.setdefault("TORCH_HOME", f"{EXTERNAL_STORAGE_BASE}/torch_cache")
-    os.environ.setdefault("TMPDIR", f"{EXTERNAL_STORAGE_BASE}/temp")
-    os.environ.setdefault("TEMP", f"{EXTERNAL_STORAGE_BASE}/temp")
-    os.environ.setdefault("TMP", f"{EXTERNAL_STORAGE_BASE}/temp")
+EXTERNAL_STORAGE_BASE = str(STORAGE_BASE)
 
 
 def is_external_storage_available() -> bool:
     """Check whether the external storage drive is accessible."""
-    # Check the parent directory (e.g. G:/DO_NOT_DELETE) since the storage
-    # subfolder may not have been created yet on first run.
-    parent = os.path.dirname(EXTERNAL_STORAGE_BASE)
-    return os.path.isdir(parent) if parent else os.path.isdir(EXTERNAL_STORAGE_BASE)
+    return STORAGE_BASE.parent.is_dir()
 
 
-# Apply overrides immediately on module import — this runs before any
-# downstream import of transformers, torch, or huggingface_hub.
-if is_external_storage_available():
-    _init_storage_directories()
-_apply_storage_env_overrides()
+from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import List, Optional
 
 # ---------------------------------------------------------------------------
 
@@ -95,21 +80,29 @@ def _comma_list(name: str, default: str) -> List[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _resolve_path(raw: str) -> str:
+    """Resolve relative paths against the PEFT engine root (not the CWD)."""
+    p = Path(raw)
+    if not p.is_absolute():
+        p = PEFT_ENGINE_ROOT / p
+    return str(p)
+
+
 def _adapter_dir() -> str:
     default = (
         f"{EXTERNAL_STORAGE_BASE}/adapters"
         if is_external_storage_available()
         else str(PEFT_ENGINE_ROOT / "adapters")
     )
-    return os.getenv("PEFT_ADAPTER_DIR", default)
+    return _resolve_path(os.getenv("PEFT_ADAPTER_DIR", default))
 
 
 def _dataset_dir() -> str:
-    return os.getenv("PEFT_DATASET_DIR", str(PEFT_ENGINE_ROOT / "datasets"))
+    return _resolve_path(os.getenv("PEFT_DATASET_DIR", str(PEFT_ENGINE_ROOT / "datasets")))
 
 
 def _output_dir() -> str:
-    return os.getenv("PEFT_OUTPUT_DIR", str(PEFT_ENGINE_ROOT / "outputs"))
+    return _resolve_path(os.getenv("PEFT_OUTPUT_DIR", str(PEFT_ENGINE_ROOT / "outputs")))
 
 
 @dataclass(frozen=True)
@@ -127,6 +120,7 @@ class Settings:
     # Base model
     base_model: str = os.getenv("PEFT_BASE_MODEL", "Qwen/Qwen2.5-3B-Instruct")
     max_seq_length: int = _positive_int("PEFT_MAX_SEQ_LENGTH", 2048)
+    preload_on_startup: bool = _bool_env("PEFT_PRELOAD_ON_STARTUP", True)
 
     # LoRA
     r: int = _positive_int("PEFT_R", 16)
