@@ -1,6 +1,6 @@
 # OmniGrapher
 
-<img src="omnigrapher/assets/logo/omnigrapher-logo-text.svg" alt="OmniGrapher" width="600">
+<img src="https://raw.githubusercontent.com/reazdevusa/omnigrapher/master/omnigrapher/assets/logo/omnigrapher-logo-text.svg" alt="OmniGrapher" width="600">
 
 > **Understand Everything. Connect Everything.**
 
