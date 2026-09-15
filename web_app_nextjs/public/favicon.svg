@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="blue-gradient-icon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4D9FFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#A44DFF;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="cyan-gradient-icon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3FF0D1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4D9FFF;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="128" height="128" fill="#0A0A0A" rx="24" ry="24"/>
+
+  <!-- Central AI Core -->
+  <circle cx="64" cy="64" r="16" fill="url(#blue-gradient-icon)"/>
+
+  <!-- Graph Nodes - Inner Ring -->
+  <circle cx="64" cy="24" r="8" fill="#3FF0D1"/>
+  <circle cx="104" cy="64" r="8" fill="#3FF0D1"/>
+  <circle cx="64" cy="104" r="8" fill="#3FF0D1"/>
+  <circle cx="24" cy="64" r="8" fill="#3FF0D1"/>
+
+  <!-- Graph Nodes - Outer Ring -->
+  <circle cx="96" cy="32" r="6" fill="#A44DFF"/>
+  <circle cx="96" cy="96" r="6" fill="#A44DFF"/>
+  <circle cx="32" cy="96" r="6" fill="#A44DFF"/>
+  <circle cx="32" cy="32" r="6" fill="#A44DFF"/>
+
+  <!-- Connection Lines - Inner -->
+  <line x1="64" y1="48" x2="64" y2="32" stroke="url(#cyan-gradient-icon)" stroke-width="3" stroke-linecap="round"/>
+  <line x1="80" y1="64" x2="96" y2="64" stroke="url(#cyan-gradient-icon)" stroke-width="3" stroke-linecap="round"/>
+  <line x1="64" y1="80" x2="64" y2="96" stroke="url(#cyan-gradient-icon)" stroke-width="3" stroke-linecap="round"/>
+  <line x1="48" y1="64" x2="32" y2="64" stroke="url(#cyan-gradient-icon)" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Connection Lines - Outer -->
+  <line x1="72" y1="56" x2="88" y2="36" stroke="#4D9FFF" stroke-width="2" stroke-linecap="round"/>
+  <line x1="72" y1="72" x2="88" y2="88" stroke="#4D9FFF" stroke-width="2" stroke-linecap="round"/>
+  <line x1="56" y1="72" x2="40" y2="88" stroke="#4D9FFF" stroke-width="2" stroke-linecap="round"/>
+  <line x1="56" y1="56" x2="40" y2="36" stroke="#4D9FFF" stroke-width="2" stroke-linecap="round"/>
+</svg>

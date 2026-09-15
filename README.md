@@ -1,5 +1,7 @@
 # OmniGrapher
 
+<img src="omnigrapher/assets/logo/omnigrapher-logo-text.svg" alt="OmniGrapher" width="600">
+
 > **Understand Everything. Connect Everything.**
 
 A local-first, graph-native AI operating system for turning documents into structured knowledge, multi-step reasoning, and automated agent workflows.
