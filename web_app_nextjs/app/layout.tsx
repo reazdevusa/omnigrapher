@@ -6,8 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "AI Knowledge Base",
-  description: "Production-grade AI knowledge base assistant",
+  title: "OmniGrapher",
+  description: "Understand Everything. Connect Everything. AI Knowledge Base Platform",
 };
 
 export default function RootLayout({

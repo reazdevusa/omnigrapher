@@ -1,6 +1,6 @@
-# AI Knowledge Base — Next.js Frontend
+# OmniGrapher — Next.js Frontend
 
-A production-grade, Next.js-based frontend for the AI Knowledge Base backend. It replaces the Streamlit UI with a fast, responsive React app that handles chat, document management, and admin features without the full-page blur-and-wait effect.
+A production-grade, Next.js-based frontend for the OmniGrapher AI Knowledge Base backend. It replaces the Streamlit UI with a fast, responsive React app that handles chat, document management, and admin features without the full-page blur-and-wait effect.
 
 ## Features
 

@@ -692,7 +692,7 @@ export function ChatInterface() {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center space-y-4 max-w-md">
-          <h2 className="text-2xl font-bold">Welcome to AI Knowledge Base</h2>
+          <h2 className="text-2xl font-bold">Welcome to OmniGrapher</h2>
           <p className="text-muted-foreground">Sign in to chat with your documents and manage your knowledge base.</p>
           <LoginDialog>
             <Button size="lg">Sign In to Get Started</Button>

@@ -306,8 +306,8 @@ export function Sidebar() {
     <aside className="w-80 h-screen border-r border-border bg-card flex flex-col">
       <div className="p-4 border-b border-border">
         <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary">
-          <LayoutDashboard className="h-6 w-6" />
-          AI Knowledge Base
+          <img src="/favicon.svg" alt="OmniGrapher" className="h-6 w-6" />
+          OmniGrapher
         </Link>
       </div>
 
