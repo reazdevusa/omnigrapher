@@ -14,12 +14,8 @@
     </filter>
   </defs>
 
-  <!-- Background -->
-  <rect width="800" height="200" fill="#0A0A0A" rx="16" ry="16"/>
-
   <!-- Logo Icon (left side) -->
   <g transform="translate(30, 25)">
-    <rect width="150" height="150" fill="#0A0A0A" rx="24" ry="24"/>
     <circle cx="75" cy="75" r="20" fill="url(#text-gradient)" filter="url(#glow)"/>
     <circle cx="75" cy="25" r="10" fill="#3FF0D1"/>
     <circle cx="125" cy="75" r="10" fill="#3FF0D1"/>
