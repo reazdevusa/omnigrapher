@@ -23,7 +23,11 @@ from app.database import (
     ParentChunk,
     create_db_session,
 )
-from app.rag_engine import delete_document_vectors
+# rag_engine is imported lazily — it pulls llama_index/chromadb/ollama (~12s)
+# and would otherwise slow ASGI startup and Docker healthcheck readiness.
+def _get_rag():
+    from app import rag_engine
+    return rag_engine
 from app.services.connectors.base import BaseConnector
 from app.storage import get_storage
 
@@ -125,7 +129,7 @@ def _delete_local_and_vectors(owner_id: int, filename: str, document_id: Optiona
         logger.exception("Failed to delete storage file %s for owner %s", filename, owner_id)
 
     try:
-        delete_document_vectors(owner_id, filename)
+        _get_rag().delete_document_vectors(owner_id, filename)
     except Exception:
         logger.exception("Failed to delete vectors for %s/%s", owner_id, filename)
 

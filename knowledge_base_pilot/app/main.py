@@ -23,14 +23,18 @@ if _WORKSPACE_ROOT.joinpath("omnigrapher").is_dir() and str(_WORKSPACE_ROOT) not
     sys.path.insert(0, str(_WORKSPACE_ROOT))
 
 from dotenv import load_dotenv
-import requests
 
 load_dotenv()
 
-try:
-    import stripe as _stripe
-except ImportError:  # pragma: no cover
-    _stripe = None  # type: ignore
+
+def _get_stripe():
+    """Import stripe lazily — it's ~1s of startup cost and only used by topup endpoints."""
+    try:
+        import stripe
+        return stripe
+    except ImportError:  # pragma: no cover
+        return None
+
 
 _STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 _STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
@@ -212,17 +216,18 @@ def topup_credits(
             detail="Online payments are not configured. Add STRIPE_SECRET_KEY to enable credit purchases, or use test mode.",
         )
 
-    if _stripe is None:
+    stripe = _get_stripe()
+    if stripe is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Stripe library is not installed. Add 'stripe' to requirements and reinstall.",
         )
 
-    _stripe.api_key = _STRIPE_SECRET_KEY
+    stripe.api_key = _STRIPE_SECRET_KEY
     origin = request.headers.get("origin") or "http://localhost:3000"
     # Use price_data so each amount creates a distinct payment (no fixed Price ID needed).
     cents = int(round(payload.amount * 100))
-    session = _stripe.checkout.Session.create(
+    session = stripe.checkout.Session.create(
         line_items=[{
             "price_data": {
                 "currency": "usd",
@@ -255,15 +260,16 @@ def verify_topup(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Stripe is not configured.",
         )
-    if _stripe is None:
+    stripe = _get_stripe()
+    if stripe is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Stripe library is not installed.",
         )
 
-    _stripe.api_key = _STRIPE_SECRET_KEY
+    stripe.api_key = _STRIPE_SECRET_KEY
     try:
-        session = _stripe.checkout.Session.retrieve(payload.session_id)
+        session = stripe.checkout.Session.retrieve(payload.session_id)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid session: {exc}")
 
@@ -294,7 +300,7 @@ def verify_topup(
 
     # Mark session as credited.
     try:
-        _stripe.checkout.Session.modify(payload.session_id, metadata={"credited": "true"})
+        stripe.checkout.Session.modify(payload.session_id, metadata={"credited": "true"})
     except Exception:
         pass
 
@@ -336,6 +342,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_HOST") or "h
 
 
 def _check_ollama():
+    import requests
     try:
         r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
         if r.status_code == 200:
@@ -347,6 +354,7 @@ def _check_ollama():
 
 def _warmup_ollama():
     """Send a lightweight generate request to load llama3.2 into VRAM before users arrive."""
+    import requests
     try:
         requests.post(
             f"{OLLAMA_BASE_URL}/api/generate",

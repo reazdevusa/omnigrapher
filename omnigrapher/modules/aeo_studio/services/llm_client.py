@@ -8,8 +8,6 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-import requests
-
 from ..config import AeoStudioSettings
 
 logger = logging.getLogger(__name__)
@@ -41,6 +39,7 @@ class OllamaLLMClient:
             },
         }
         timeout = timeout or self.settings.llm_timeout_seconds
+        import requests
         try:
             response = requests.post(
                 f"{self.base_url}/api/generate",
@@ -73,6 +72,7 @@ class OllamaLLMClient:
             },
         }
         timeout = timeout or self.settings.llm_timeout_seconds
+        import requests
         response = requests.post(
             f"{self.base_url}/api/generate",
             json=payload,

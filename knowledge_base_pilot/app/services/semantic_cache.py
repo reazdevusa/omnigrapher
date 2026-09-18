@@ -7,11 +7,10 @@ cosine similarity.  High-similarity hits return the stored response instantly.
 import hashlib
 import json
 import logging
+import math
 import os
 import time
 from typing import Any, Callable, Optional
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +29,17 @@ def _default_embed_fn(text: str) -> list[float]:
         seed = int.from_bytes(raw, "big") + i * 7919
         val = ((seed % 2000) - 1000) / 1000.0
         floats.append(val)
-    arr = np.array(floats, dtype=np.float32)
-    norm = float(np.linalg.norm(arr))
+    norm = math.sqrt(sum(v * v for v in floats))
     if norm == 0:
-        return arr.tolist()
-    return (arr / norm).tolist()
+        return floats
+    return [v / norm for v in floats]
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    a_arr = np.array(a, dtype=np.float32)
-    b_arr = np.array(b, dtype=np.float32)
-    dot = float(a_arr @ b_arr)
-    return dot / (np.linalg.norm(a_arr) * np.linalg.norm(b_arr) + 1e-12)
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    return dot / (norm_a * norm_b + 1e-12)
 
 
 def _cache_key(namespace: str, query: str, tenant_id: Optional[str] = None) -> str:

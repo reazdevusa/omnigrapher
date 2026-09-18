@@ -6,8 +6,6 @@ import time
 from typing import List, Literal
 from uuid import uuid4
 
-import requests
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -24,11 +22,18 @@ from app.cost.tracker import (
 from app.database import User, get_db
 from app.providers import Message, get_provider
 from app.providers.registry import get_model_info, list_models, user_tier_is_paid
-from app.rag_engine import (
-    _get_embed_model,
-    _get_knowledge_base_collection,
-    retrieve_passages,
-)
+# rag_engine is imported lazily on first use — it pulls in llama_index,
+# chromadb, ollama, onnxruntime, and cv2, which take ~20s to import. Deferring
+# keeps the ASGI startup (and Docker healthcheck readiness) fast.
+_RAG = None
+
+
+def _get_rag():
+    """Import and cache the rag_engine module on first use."""
+    global _RAG
+    if _RAG is None:
+        from app import rag_engine as _RAG
+    return _RAG
 from app.services import ab_testing
 from app.services.circuit_breaker import default_circuit_breaker
 from app.services.guardrails import check_input, check_output
@@ -88,6 +93,7 @@ def _compute_triad_scores(question: str, answer: str, documents: list[dict]) -> 
 def _get_ollama_tags() -> set[str]:
     """Return the set of model names currently pulled in the local Ollama instance."""
     base = (os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434").rstrip("/")
+    import requests
     try:
         response = requests.get(f"{base}/api/tags", timeout=10)
         if response.ok:
@@ -169,6 +175,7 @@ def _ollama_pull_name(model_id: str) -> str:
 def _pull_ollama_model(name: str) -> None:
     """Background task that asks the local Ollama server to pull a model."""
     base = _ollama_base_url()
+    import requests
     try:
         with requests.post(
             f"{base}/api/pull",
@@ -239,7 +246,7 @@ def chat(
         # no_llm: pure search; bypass LLM, circuit breaker, and output guard.
         if req.model == "no_llm":
             t_search = time.perf_counter()
-            passages = retrieve_passages(
+            passages = _get_rag().retrieve_passages(
                 query_text,
                 owner_id=user.id,
                 source=None,
@@ -583,7 +590,7 @@ def chat(
     # General-knowledge / no-retrieval path.
     if req.model == "no_llm":
         t_search = time.perf_counter()
-        passages = retrieve_passages(
+        passages = _get_rag().retrieve_passages(
             query_text,
             owner_id=user.id,
             source=None,
@@ -653,13 +660,13 @@ def chat(
         # This avoids the heavy worker index while keeping answers grounded in the user's docs.
         passages = []
         try:
-            collection = _get_knowledge_base_collection()
+            collection = _get_rag()._get_knowledge_base_collection()
             where = (
                 None
                 if user.role == "admin"
                 else {"$or": [{"owner_id": user.id}, {"visibility": "public"}]}
             )
-            embed_model = _get_embed_model()
+            embed_model = _get_rag()._get_embed_model()
             embedding = embed_model.get_text_embedding(query_text)
             results = collection.query(
                 query_embeddings=[embedding],

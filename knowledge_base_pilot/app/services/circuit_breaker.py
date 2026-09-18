@@ -10,9 +10,11 @@ import os
 import re
 from typing import Any, Optional
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
+
+
+def _clip(value: float, low: float = 0.0, high: float = 1.0) -> float:
+    return max(low, min(high, value))
 
 _STOPWORDS = {
     "the", "a", "an", "is", "are", "was", "were", "be", "been",
@@ -80,7 +82,7 @@ def _groundedness_score(answer: str, context: list[str]) -> float:
     # Combine: entity overlap is weighted more heavily because named entities
     # and numbers are the most common hallucination vectors.
     score = 0.5 * token_overlap + 0.5 * entity_overlap
-    return float(np.clip(score, 0.0, 1.0))
+    return _clip(score)
 
 
 def _hallucination_score(answer: str, context: list[str], triad_scores: Optional[dict] = None) -> float:
@@ -95,7 +97,7 @@ def _hallucination_score(answer: str, context: list[str], triad_scores: Optional
             # Average with triad groundedness if provided.
             hallucination = (hallucination + (1.0 - groundedness)) / 2.0
 
-    return float(np.clip(hallucination, 0.0, 1.0))
+    return _clip(hallucination)
 
 
 class HallucinationCircuitBreaker:

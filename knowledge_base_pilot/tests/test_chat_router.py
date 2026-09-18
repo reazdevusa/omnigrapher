@@ -55,7 +55,7 @@ class TestChatRouterNoLLM(unittest.TestCase):
     def tearDown(self):
         app.dependency_overrides.clear()
 
-    @mock.patch("app.routers.llm.retrieve_passages")
+    @mock.patch("app.rag_engine.retrieve_passages")
     def test_no_llm_returns_search_payload_instantly(self, mock_retrieve):
         mock_retrieve.return_value = [
             {"source": "Programming Rust.pdf", "page": 1, "text": "Rust is a systems language.", "score": 0.9},

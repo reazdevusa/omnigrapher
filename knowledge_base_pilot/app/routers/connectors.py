@@ -15,7 +15,6 @@ from app.services.connectors.manager import (
     get_connector_instance,
     sync_connector,
 )
-from app.tasks.cdc_sync import sync_connector_task
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +136,9 @@ def trigger_sync(
     db: Session = Depends(get_db),
 ):
     """Trigger an immediate manual sync for a connector."""
+    # Celery is imported lazily so app startup stays fast.
+    from app.tasks.cdc_sync import sync_connector_task
+
     connector = _get_owned_connector(db, connector_id, user.id)
     # Schedule async task
     result = sync_connector_task.delay(connector.id)

@@ -24,7 +24,7 @@ class TestOllamaProvider(unittest.TestCase):
         p = OllamaProvider()
         self.assertIn("127.0.0.1:11434", p.host)
 
-    @mock.patch("app.providers.ollama.requests.post")
+    @mock.patch("requests.post")
     def test_logs_http_errors(self, mock_post):
         from requests import HTTPError
 

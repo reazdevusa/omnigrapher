@@ -4,8 +4,6 @@ import logging
 import os
 from typing import Iterable, List, Optional
 
-import requests
-
 from .base import LLMProvider, LLMResponse, Message
 
 logger = logging.getLogger(__name__)
@@ -51,6 +49,7 @@ class OllamaProvider(LLMProvider):
             },
         }
         url = f"{self.host}/api/chat"
+        import requests
         try:
             response = requests.post(url, json=payload, timeout=self.timeout)
         except Exception as exc:
@@ -120,6 +119,7 @@ class OllamaProvider(LLMProvider):
             },
         }
         url = f"{self.host}/api/chat"
+        import requests
         try:
             response = requests.post(url, json=payload, stream=True, timeout=(10, self.timeout))
             response.raise_for_status()

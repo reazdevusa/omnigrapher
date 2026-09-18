@@ -31,7 +31,7 @@ class TestOllamaProvider(unittest.TestCase):
         p = OllamaProvider()
         self.assertIn("127.0.0.1:11434", p.host)
 
-    @mock.patch("app.providers.ollama.requests.post")
+    @mock.patch("requests.post")
     def test_logs_http_errors(self, mock_post):
         from requests import HTTPError
 
@@ -126,7 +126,7 @@ class TestNoLLMRawSearch(unittest.TestCase):
     def tearDown(self):
         app.dependency_overrides.clear()
 
-    @mock.patch("app.routers.llm.retrieve_passages")
+    @mock.patch("app.rag_engine.retrieve_passages")
     def test_no_llm_document_mode_returns_raw_chunks(self, mock_retrieve):
         mock_retrieve.return_value = [
             {"source": "Programming Rust.pdf", "page": 1, "text": "Ownership in Rust.", "score": 0.9},

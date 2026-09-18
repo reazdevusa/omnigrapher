@@ -9,7 +9,6 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-import requests
 from sqlalchemy.orm import Session
 
 from ..models import AeoPageOutput, AeoPublishLog
@@ -68,6 +67,7 @@ def publish_to_wordpress(
     if username and application_password:
         headers["Authorization"] = _basic_auth_header(username, application_password)
 
+    import requests
     try:
         response = requests.post(endpoint, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
@@ -147,6 +147,7 @@ def publish_to_webhook(
         **(extra_payload or {}),
     }
 
+    import requests
     try:
         response = requests.post(
             webhook_url,
