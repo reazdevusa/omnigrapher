@@ -169,6 +169,15 @@ class DocumentChunksResponse(BaseModel):
     chunks: List[ChunkItem] = Field(default_factory=list)
 
 
+class DocumentMetadataResponse(BaseModel):
+    """Combined content + chunks payload — one round-trip for the viewer."""
+    filename: str
+    content: str
+    type: Optional[str] = ""
+    pages: List[PageItem] = Field(default_factory=list)
+    chunks: List[ChunkItem] = Field(default_factory=list)
+
+
 class UploadResponse(BaseModel):
     uploaded: List[str]
     skipped: List[str]

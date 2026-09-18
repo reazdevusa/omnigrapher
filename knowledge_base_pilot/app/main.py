@@ -90,6 +90,7 @@ def _get_rag() -> Any:
 from app.schemas import (
     DocumentContentResponse,
     DocumentChunksResponse,
+    DocumentMetadataResponse,
     DocumentItem,
     DocumentListResponse,
     FeedbackRequest,
@@ -130,6 +131,9 @@ async def lifespan(app: FastAPI):
             # Pre-load the local Ollama model so the first user request doesn't
             # wait for GPU/CPU allocation.
             threading.Thread(target=_warmup_ollama, daemon=True).start()
+            # Pre-warm the heavy RAG module (llama_index/chromadb/onnxruntime)
+            # so the first document/chat request doesn't pay the import cost.
+            await loop.run_in_executor(None, _prewarm_rag)
         except Exception:
             logger.exception("Background startup initialization failed")
 
@@ -339,6 +343,17 @@ def api_health_ok():
 
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434"
+
+
+def _prewarm_rag():
+    """Import rag_engine and open the Chroma collection so the first document
+    or chat request doesn't pay the one-time ~15-20s import cost."""
+    try:
+        rag = _get_rag()
+        rag.get_chroma_client()
+        logger.info("RAG engine prewarmed")
+    except Exception:
+        logger.warning("RAG prewarm failed (will retry on first request)", exc_info=True)
 
 
 def _check_ollama():
@@ -872,6 +887,21 @@ def document_chunks(filename: str, user: User = Depends(get_current_user)):
 
     chunks = _get_rag().get_document_chunks(file_path, user.id)
     return DocumentChunksResponse(filename=filename, chunks=chunks)
+
+
+@app.get("/api/documents/{filename}/metadata", response_model=DocumentMetadataResponse)
+def document_metadata(filename: str, user: User = Depends(get_current_user)):
+    """Combined content + chunks in one call — avoids the frontend issuing two
+    requests that each re-query ChromaDB for the same document."""
+    filename = unquote(filename)
+    file_path = _get_user_document_path(user.id, filename)
+
+    try:
+        bundle = _get_rag().get_document_bundle(file_path, user.id)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    return DocumentMetadataResponse(filename=filename, **bundle["content"], chunks=bundle["chunks"])
 
 
 @app.get("/api/documents/{filename}/raw")

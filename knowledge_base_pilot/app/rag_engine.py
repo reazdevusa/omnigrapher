@@ -1894,6 +1894,23 @@ def _guess_mime_type(file_path: Path) -> str:
 
 def get_document_content(file_path: Path, owner_id: int) -> dict:
     """Return readable document content, preferring indexed chunks if available."""
+    bundle = get_document_bundle(file_path, owner_id)
+    return bundle["content"]
+
+
+def get_document_chunks(file_path: Path, owner_id: int, max_chunk_size: int = 500) -> list:
+    """Return chunks produced by the same parser and splitter used for indexing."""
+    bundle = get_document_bundle(file_path, owner_id)
+    return bundle["chunks"]
+
+
+def get_document_bundle(file_path: Path, owner_id: int, max_chunk_size: int = 500) -> dict:
+    """Return both content (pages) and chunks for a document in one pass.
+
+    Previously ``get_document_content`` and ``get_document_chunks`` each ran
+    ``_fetch_chunks_for_file`` independently, doubling the ChromaDB query and
+    text normalization work. This fetches once and derives both payloads.
+    """
     mime_type = _guess_mime_type(file_path)
     chunks, found = _fetch_chunks_for_file(file_path, owner_id)
     if found and chunks:
@@ -1911,44 +1928,37 @@ def get_document_content(file_path: Path, owner_id: int) -> dict:
         if buffer:
             pages.append({"page": current_page, "text": "\n\n".join(buffer)})
         full_text = "\n\n".join(p["text"] for p in pages)
-        return {"content": full_text, "pages": pages, "type": mime_type}
+        return {
+            "content": {"content": full_text, "pages": pages, "type": mime_type},
+            "chunks": [
+                {"chunk_id": chunk["chunk_id"], "page": chunk["page"], "text": chunk["text"]}
+                for chunk in chunks
+            ],
+        }
 
     # Fallback to reading/extracting from disk if not yet indexed
+    if not file_path.exists():
+        return {"content": {"content": "", "pages": [], "type": mime_type}, "chunks": []}
+
     if file_path.suffix.lower() == ".pdf":
         documents = _load_pdf(file_path)
     else:
         documents = SimpleDirectoryReader(input_files=[str(file_path)]).load_data()
 
     if not documents:
-        return {"content": "", "pages": [], "type": mime_type}
+        return {"content": {"content": "", "pages": [], "type": mime_type}, "chunks": []}
 
     pages = [{"page": i + 1, "text": doc.text} for i, doc in enumerate(documents)]
     full_text = "\n\n".join(doc.text for doc in documents)
-    return {"content": full_text, "pages": pages, "type": mime_type}
-
-
-def get_document_chunks(file_path: Path, owner_id: int, max_chunk_size: int = 500) -> list:
-    """Return chunks produced by the same parser and splitter used for indexing."""
-    chunks, found = _fetch_chunks_for_file(file_path, owner_id)
-    if found:
-        return [
-            {"chunk_id": chunk["chunk_id"], "page": chunk["page"], "text": chunk["text"]}
-            for chunk in chunks
-        ]
-
-    if not file_path.exists():
-        return []
-    if file_path.suffix.lower() == ".pdf":
-        documents = _load_pdf(file_path)
-    else:
-        documents = SimpleDirectoryReader(input_files=[str(file_path)]).load_data()
-
     nodes = _chunk_documents(documents)
-    return [
-        {
-            "chunk_id": getattr(node, "node_id", node.id_),
-            "page": node.metadata.get("page", 0),
-            "text": node.text,
-        }
-        for node in nodes
-    ]
+    return {
+        "content": {"content": full_text, "pages": pages, "type": mime_type},
+        "chunks": [
+            {
+                "chunk_id": getattr(node, "node_id", node.id_),
+                "page": node.metadata.get("page", 0),
+                "text": node.text,
+            }
+            for node in nodes
+        ],
+    }

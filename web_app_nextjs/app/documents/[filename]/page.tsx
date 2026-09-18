@@ -390,12 +390,11 @@ export default function DocumentPage() {
 
     const loadMetadata = async () => {
       try {
-        const [contentRes, chunksRes] = await Promise.all([
-          api.getDocumentContent(token, filename),
-          api.getDocumentChunks(token, filename),
-        ]);
-        setContent(contentRes);
-        setChunks(chunksRes.chunks || []);
+        // Single request for both content and chunks — the backend resolves
+        // them in one ChromaDB query instead of two.
+        const meta = await api.getDocumentMetadata(token, filename);
+        setContent(meta);
+        setChunks(meta.chunks || []);
 
         const isPdf = filename.toLowerCase().endsWith(".pdf");
         const isTxt = filename.toLowerCase().endsWith(".txt");
@@ -403,11 +402,11 @@ export default function DocumentPage() {
         // Do not override rawType for PDFs; keep the "application/pdf" set by loadPdf.
         if (!isPdf) {
           const detectedType =
-            contentRes.type ||
+            meta.type ||
             (isTxt ? "text/plain" : "");
           setRawType(detectedType);
           if ((detectedType || "").startsWith("text/") || detectedType === "application/json") {
-            setRawText(contentRes.content || null);
+            setRawText(meta.content || null);
           } else {
             setRawText(null);
           }

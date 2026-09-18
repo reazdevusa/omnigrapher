@@ -247,6 +247,10 @@ export async function getDocumentChunks(token: string, filename: string) {
   return fetchJson(`/api/documents/${encodeURIComponent(filename)}/chunks`, {}, token);
 }
 
+export async function getDocumentMetadata(token: string, filename: string) {
+  return fetchJson(`/api/documents/${encodeURIComponent(filename)}/metadata`, {}, token);
+}
+
 export function getDocumentRawUrl(_token: string, filename: string): string {
   return `${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw`;
 }
