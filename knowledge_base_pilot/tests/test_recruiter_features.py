@@ -14,6 +14,7 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from app.auth import get_current_user
+from app.database import ShowcaseResult, create_db_session
 from app.main import app
 from app.services import (
     media_ingestion_service as media_svc,
@@ -635,6 +636,145 @@ class TestAskEndpoints(unittest.TestCase):
         # visual asks must filter on the visual media_type
         self.assertEqual(q.call_args.kwargs["media_type"], "visual")
         self.assertEqual(resp.json()["citations"][0]["file_name"], "chart.png")
+
+
+# ---------------------------------------------------------------------------
+# Showcase result persistence + history endpoints
+# ---------------------------------------------------------------------------
+
+class TestShowcaseHistory(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+        self.auth_user = SimpleNamespace(id=42, role="admin", api_keys={})
+        app.dependency_overrides[get_current_user] = lambda: self.auth_user
+        # deterministic slate
+        db = create_db_session()
+        try:
+            db.query(ShowcaseResult).delete()
+            db.commit()
+        finally:
+            db.close()
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
+        ml_svc.reset_ml_engine_service()
+        ts_svc.reset_whisper_model()
+
+    def _insert(self, owner_id, kind, title, payload=None):
+        import json
+        db = create_db_session()
+        try:
+            row = ShowcaseResult(
+                owner_id=owner_id,
+                kind=kind,
+                title=title,
+                source_ref=title,
+                payload=json.dumps(payload or {}),
+            )
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+            return row.id
+        finally:
+            db.close()
+
+    def test_results_persist_across_sessions(self):
+        rid = self._insert(42, "transcript", "demo.wav", {"segments": [{"text": "hi"}]})
+        # a brand-new session/connection must still see the row (i.e. survives restart)
+        db = create_db_session()
+        try:
+            row = db.query(ShowcaseResult).filter(ShowcaseResult.id == rid).one()
+            self.assertEqual(row.title, "demo.wav")
+            self.assertEqual(row.owner_id, 42)
+        finally:
+            db.close()
+
+    def test_history_list_scoped_to_user(self):
+        mine = self._insert(42, "transcript", "mine.wav", {"segments": [{"text": "x"}], "duration_seconds": 9.5, "language": "en"})
+        self._insert(99, "transcript", "theirs.wav", {"segments": []})
+        self._insert(42, "visual", "chart.png", {"ocr_blocks": [{"text": "t"}], "objects": [], "indexed_chunks": 2})
+        self._insert(42, "adapter_switch", "summarizer", {"adapter": "summarizer", "switch_ms": 4.2, "warmed": True})
+
+        resp = self.client.get("/api/showcase/history")
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["items"]
+        self.assertEqual(len(items), 3)
+        self.assertNotIn("theirs.wav", [i["title"] for i in items])
+        # most recent first + summaries computed
+        transcript = next(i for i in items if i["id"] == mine)
+        self.assertEqual(transcript["summary"]["segments"], 1)
+        visual = next(i for i in items if i["kind"] == "visual")
+        self.assertEqual(visual["summary"]["ocr_blocks"], 1)
+        switch = next(i for i in items if i["kind"] == "adapter_switch")
+        self.assertEqual(switch["summary"]["switch_ms"], 4.2)
+
+    def test_history_list_kind_filter(self):
+        self._insert(42, "transcript", "a.wav")
+        self._insert(42, "visual", "b.png")
+        resp = self.client.get("/api/showcase/history?kind=visual")
+        items = resp.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["kind"], "visual")
+
+    def test_history_detail_and_isolation(self):
+        mine = self._insert(42, "transcript", "mine.wav", {"segments": [{"text": "hello"}]})
+        theirs = self._insert(99, "transcript", "theirs.wav", {})
+
+        resp = self.client.get(f"/api/showcase/history/{mine}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["payload"]["segments"][0]["text"], "hello")
+
+        # another user's record is invisible, not leaked
+        resp = self.client.get(f"/api/showcase/history/{theirs}")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_history_delete(self):
+        mine = self._insert(42, "visual", "img.png")
+        theirs = self._insert(99, "visual", "other.png")
+
+        resp = self.client.delete(f"/api/showcase/history/{theirs}")
+        self.assertEqual(resp.status_code, 404)
+
+        resp = self.client.delete(f"/api/showcase/history/{mine}")
+        self.assertEqual(resp.status_code, 200)
+        resp = self.client.get(f"/api/showcase/history/{mine}")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_transcribe_persists_result(self):
+        fake_pkg = types.ModuleType("faster_whisper")
+        fake_pkg.WhisperModel = _FakeWhisperModel
+
+        with mock.patch.dict(sys.modules, {"faster_whisper": fake_pkg}), \
+             mock.patch.object(media_svc, "index_transcript_chunks", return_value=3), \
+             mock.patch.object(
+                 media_svc, "index_transcript_graph",
+                 return_value={"status": "indexed", "entities": 5, "relationships": 2},
+             ):
+            resp = self.client.post(
+                "/api/showcase/transcribe",
+                files={"file": ("demo.wav", b"RIFF-fake-audio", "audio/wav")},
+            )
+        self.assertEqual(resp.status_code, 200)
+
+        hist = self.client.get("/api/showcase/history?kind=transcript").json()["items"]
+        self.assertEqual(len(hist), 1)
+        self.assertEqual(hist[0]["title"], "demo.wav")
+        self.assertEqual(hist[0]["summary"]["segments"], 3)
+
+        detail = self.client.get(f"/api/showcase/history/{hist[0]['id']}").json()
+        self.assertEqual(detail["payload"]["language"], "en")
+        self.assertEqual(len(detail["payload"]["segments"]), 3)
+
+    def test_adapter_switch_persists_result(self):
+        svc = ml_svc.get_ml_engine_service()
+        svc.llm._http_client = _FakeHttpClient({"adapters": [{"name": "summarizer"}]})
+        resp = self.client.post("/api/showcase/ml/switch-adapter", json={"adapter": "summarizer"})
+        self.assertEqual(resp.status_code, 200)
+
+        hist = self.client.get("/api/showcase/history?kind=adapter_switch").json()["items"]
+        self.assertEqual(len(hist), 1)
+        self.assertEqual(hist[0]["title"], "summarizer")
+        self.assertIn("switch_ms", hist[0]["summary"])
 
 
 if __name__ == "__main__":

@@ -256,6 +256,20 @@ class ConnectorSyncLog(Base):
     connector = relationship("Connector", back_populates="sync_logs")
 
 
+class ShowcaseResult(Base):
+    """Persisted Live AI Showcase outputs (transcripts, vision analyses,
+    adapter-switch events) so results survive app restarts."""
+    __tablename__ = "showcase_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False, index=True)  # transcript | visual | adapter_switch
+    title = Column(String, nullable=False)
+    source_ref = Column(String, nullable=True)
+    payload = Column(Text, nullable=False)  # JSON-serialized result
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class DualSession:
     """Wraps a SQLite (primary) and a PostgreSQL session.
 

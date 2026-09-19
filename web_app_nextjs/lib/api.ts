@@ -428,6 +428,32 @@ export async function runEdgeBenchmark(token: string, inputSize = 224, iteration
   return fetchJson(`/api/showcase/ml/edge-benchmark?input_size=${inputSize}&iterations=${iterations}`, {}, token);
 }
 
+export interface ShowcaseHistoryItem {
+  id: number;
+  kind: "transcript" | "visual" | "adapter_switch";
+  title: string;
+  source_ref: string | null;
+  created_at: string | null;
+  summary: Record<string, any>;
+}
+
+export interface ShowcaseHistoryDetail extends ShowcaseHistoryItem {
+  payload: any;
+}
+
+export async function getShowcaseHistory(token: string, kind?: string): Promise<{ items: ShowcaseHistoryItem[] }> {
+  const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  return fetchJson(`/api/showcase/history${qs}`, {}, token);
+}
+
+export async function getShowcaseHistoryItem(token: string, id: number): Promise<ShowcaseHistoryDetail> {
+  return fetchJson(`/api/showcase/history/${id}`, {}, token);
+}
+
+export async function deleteShowcaseHistoryItem(token: string, id: number): Promise<{ status: string; id: number }> {
+  return fetchJson(`/api/showcase/history/${id}`, { method: "DELETE" }, token);
+}
+
 export async function getDocumentRaw(_token: string, filename: string): Promise<Response> {
   const res = await fetch(`${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw`, {
     credentials: "include",

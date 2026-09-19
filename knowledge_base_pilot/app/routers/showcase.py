@@ -16,9 +16,10 @@ from fastapi import (
     APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status,
 )
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
-from app.database import User
+from app.database import ShowcaseResult, User, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,24 @@ class AdapterSwitchRequest(BaseModel):
     adapter: str
 
 
+def _save_result(db: Session, owner_id: int, kind: str, title: str, source_ref: str, payload: dict) -> None:
+    """Persist a showcase result for the history panel. Best-effort — never
+    lets a DB hiccup break the user-facing feature."""
+    import json
+    try:
+        db.add(ShowcaseResult(
+            owner_id=owner_id,
+            kind=kind,
+            title=title or source_ref or "untitled",
+            source_ref=source_ref,
+            payload=json.dumps(payload),
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to persist showcase result (%s)", kind)
+
+
 def _save_upload(upload: UploadFile) -> Path:
     _TMP_DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(upload.filename or "media.bin").suffix
@@ -192,6 +211,7 @@ async def transcribe_upload(
     language: Optional[str] = Form(default=None),
     index: bool = Form(default=True),
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     from app.services.media_ingestion_service import is_media_file
 
@@ -203,17 +223,20 @@ async def transcribe_upload(
     tmp = _save_upload(file)
     try:
         import asyncio
-        return await asyncio.to_thread(
+        resp = await asyncio.to_thread(
             _do_transcribe, tmp, language, index, user.id, file.filename or tmp.name
         )
     finally:
         tmp.unlink(missing_ok=True)
+    _save_result(db, user.id, "transcript", file.filename or resp.source_ref, resp.source_ref, resp.model_dump())
+    return resp
 
 
 @router.post("/transcribe-url", response_model=TranscriptResponse)
 async def transcribe_url(
     payload: TranscribeURLRequest,
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     import asyncio
     from app.services.media_ingestion_service import resolve_media_source
@@ -225,9 +248,11 @@ async def transcribe_url(
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
-    return await asyncio.to_thread(
+    resp = await asyncio.to_thread(
         _do_transcribe, source.local_path, payload.language, payload.index, user.id, source.source_ref
     )
+    _save_result(db, user.id, "transcript", source.display_name or source.source_ref, source.source_ref, resp.model_dump())
+    return resp
 
 
 def _generate_answer(question: str, context_chunks: List[str], instruction: str) -> str:
@@ -357,6 +382,7 @@ async def vision_analyze(
     file: UploadFile = File(...),
     index: bool = Form(default=True),
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     import asyncio
     from app.services import vision_service as vs
@@ -398,11 +424,13 @@ async def vision_analyze(
             logger.exception("Visual feature indexing failed for %s", name)
 
     payload = vs.vision_result_to_json(result)
-    return VisionAnalyzeResponse(
+    resp = VisionAnalyzeResponse(
         **payload,
         source_ref=name,
         indexed_chunks=indexed,
     )
+    _save_result(db, user.id, "visual", name, name, resp.model_dump())
+    return resp
 
 
 @router.get("/ml/adapters")
@@ -415,15 +443,18 @@ def ml_adapters(user: User = Depends(get_current_user)):
 def ml_switch_adapter(
     payload: AdapterSwitchRequest,
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     from app.services.ml_engine_service import get_ml_engine_service
     result = get_ml_engine_service().switch_adapter(payload.adapter)
-    return {
+    out = {
         "adapter": result.adapter,
         "switched": result.switched,
         "switch_ms": result.switch_ms,
         "warmed": result.warmed,
     }
+    _save_result(db, user.id, "adapter_switch", result.adapter, "", out)
+    return out
 
 
 @router.get("/ml/gpu")
@@ -447,3 +478,109 @@ def ml_edge_benchmark(
         "backend": t.backend,
         "device": t.device,
     }
+
+
+# ---------------------------------------------------------------------------
+# History — persisted showcase results
+# ---------------------------------------------------------------------------
+
+def _history_summary(kind: str, payload: dict) -> dict:
+    if kind == "transcript":
+        return {
+            "segments": len(payload.get("segments") or []),
+            "duration_seconds": payload.get("duration_seconds"),
+            "language": payload.get("language"),
+        }
+    if kind == "visual":
+        return {
+            "ocr_blocks": len(payload.get("ocr_blocks") or []),
+            "objects": len(payload.get("objects") or []),
+            "indexed_chunks": payload.get("indexed_chunks", 0),
+        }
+    if kind == "adapter_switch":
+        return {
+            "adapter": payload.get("adapter"),
+            "switch_ms": payload.get("switch_ms"),
+            "warmed": payload.get("warmed"),
+        }
+    return {}
+
+
+@router.get("/history")
+def list_history(
+    kind: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lightweight list of past showcase results for the history panel."""
+    import json
+
+    q = db.query(ShowcaseResult).filter(ShowcaseResult.owner_id == user.id)
+    if kind:
+        q = q.filter(ShowcaseResult.kind == kind)
+    rows = q.order_by(ShowcaseResult.created_at.desc()).limit(limit).all()
+
+    items = []
+    for r in rows:
+        try:
+            payload = json.loads(r.payload or "{}")
+        except Exception:
+            payload = {}
+        items.append({
+            "id": r.id,
+            "kind": r.kind,
+            "title": r.title,
+            "source_ref": r.source_ref,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "summary": _history_summary(r.kind, payload),
+        })
+    return {"items": items}
+
+
+@router.get("/history/{result_id}")
+def get_history_item(
+    result_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Full payload of one past result — used to reload it into the UI."""
+    import json
+
+    r = (
+        db.query(ShowcaseResult)
+        .filter(ShowcaseResult.id == result_id, ShowcaseResult.owner_id == user.id)
+        .first()
+    )
+    if r is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Result not found")
+    try:
+        payload = json.loads(r.payload or "{}")
+    except Exception:
+        payload = {}
+    return {
+        "id": r.id,
+        "kind": r.kind,
+        "title": r.title,
+        "source_ref": r.source_ref,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "payload": payload,
+    }
+
+
+@router.delete("/history/{result_id}")
+def delete_history_item(
+    result_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = (
+        db.query(ShowcaseResult)
+        .filter(ShowcaseResult.id == result_id, ShowcaseResult.owner_id == user.id)
+        .first()
+    )
+    if r is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Result not found")
+    db.delete(r)
+    db.commit()
+    return {"status": "deleted", "id": result_id}
