@@ -108,6 +108,7 @@ services:
       - OLLAMA_BASE_URL=http://knowledge-base-ollama:11434
       - LLM_MODEL=llama3.2:latest
       - EMBED_MODEL=nomic-embed-text:latest
+      - VLM_MODEL=llava:latest
       - GRAPH_RAG_ENABLED=false
       - PYTHONPATH=/workspace
       - AEO_DATABASE_URL=sqlite:////data/aeo/aeo_studio.db
