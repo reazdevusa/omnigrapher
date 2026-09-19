@@ -1,8 +1,9 @@
 FROM python:3.11
 
-# OpenCV / ONNX Runtime shared libraries
+# OpenCV / ONNX Runtime shared libraries + ffmpeg for yt-dlp audio extraction
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 libxrender1 libfontconfig1 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
