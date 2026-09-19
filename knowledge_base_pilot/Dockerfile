@@ -13,6 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Deno JS runtime for yt-dlp (YouTube player challenge solving)
+COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+
 EXPOSE 8001
 
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
