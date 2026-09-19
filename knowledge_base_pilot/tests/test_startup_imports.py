@@ -23,6 +23,10 @@ FORBIDDEN_AT_STARTUP = [
     "cv2",
     "stripe",           # ~1s, only used by topup endpoints
     "celery",           # task queue, only needed by celery worker/endpoints
+    "faster_whisper",   # CTranslate2 model stack — showcase transcription only
+    "yt_dlp",           # remote media downloader — showcase ingestion only
+    "onnx",             # graph builder for the edge micro-benchmark
+    "torch",            # only needed for real GPU telemetry / training
 ]
 
 

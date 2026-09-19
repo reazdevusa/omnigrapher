@@ -53,6 +53,7 @@ import {
   RefreshCw,
   MoreVertical,
   CreditCard,
+  Zap,
 } from "lucide-react";
 
 export function Sidebar() {
@@ -299,6 +300,7 @@ export function Sidebar() {
     { href: "/library", icon: BookOpen, label: "Library" },
     { href: "/projects", icon: FolderKanban, label: "Projects" },
     { href: "/dashboard/aeo-studio", icon: Sparkles, label: "AEO Studio" },
+    { href: "/dashboard/ml-showcase", icon: Zap, label: "Live AI Showcase" },
     { href: "/more", icon: MoreHorizontal, label: "More" },
   ];
 

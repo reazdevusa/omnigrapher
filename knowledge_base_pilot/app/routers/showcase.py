@@ -1,0 +1,297 @@
+"""Live AI Showcase endpoints: speech transcription, computer vision, and
+custom neural-net / edge ML telemetry — for recruiters and evaluators to test
+capabilities in the running app.
+
+All heavy work (Whisper, OCR, ONNX) runs in threadpool so the event loop stays
+responsive; heavy libraries are imported lazily inside the services.
+"""
+
+import logging
+import os
+import tempfile
+from pathlib import Path
+from typing import List, Optional
+
+from fastapi import (
+    APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status,
+)
+from pydantic import BaseModel, Field
+
+from app.auth import get_current_user
+from app.database import User
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/showcase", tags=["showcase"])
+
+MAX_MEDIA_UPLOAD_MB = int(os.getenv("MAX_MEDIA_UPLOAD_MB", "250"))
+_TMP_DIR = Path(tempfile.gettempdir()) / "omnigrapher_showcase"
+
+
+class TranscriptSegmentOut(BaseModel):
+    start: float
+    end: float
+    text: str
+    start_label: str
+    end_label: str
+
+
+class TranscriptResponse(BaseModel):
+    text: str
+    language: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    model: str
+    device: str
+    segments: List[TranscriptSegmentOut] = Field(default_factory=list)
+    source_ref: str = ""
+    indexed_chunks: int = 0
+
+
+class TranscribeURLRequest(BaseModel):
+    url: str
+    language: Optional[str] = None
+    index: bool = True
+
+
+class SummarizeRequest(BaseModel):
+    transcript: str
+    max_tokens: int = 512
+
+
+class VisionBlockOut(BaseModel):
+    text: str
+    confidence: float
+    bbox: dict
+
+
+class VisionObjectOut(BaseModel):
+    x: int
+    y: int
+    w: int
+    h: int
+    label: str
+    confidence: float
+
+
+class VisionAnalyzeResponse(BaseModel):
+    ocr_text: str
+    ocr_blocks: List[VisionBlockOut] = Field(default_factory=list)
+    objects: List[VisionObjectOut] = Field(default_factory=list)
+    width: int
+    height: int
+    frames_sampled: int = 0
+    chart_rows: List[List[str]] = Field(default_factory=list)
+
+
+class FrameSampleOut(BaseModel):
+    frame_index: int
+    timestamp_seconds: float
+    ocr_text: str
+
+
+class AdapterSwitchRequest(BaseModel):
+    adapter: str
+
+
+def _save_upload(upload: UploadFile) -> Path:
+    _TMP_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(upload.filename or "media.bin").suffix
+    fd, tmp = tempfile.mkstemp(prefix="showcase_", suffix=suffix, dir=_TMP_DIR)
+    size = 0
+    limit = MAX_MEDIA_UPLOAD_MB * 1024 * 1024
+    with os.fdopen(fd, "wb") as f:
+        while True:
+            chunk = upload.file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > limit:
+                f.close()
+                Path(tmp).unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Upload exceeds {MAX_MEDIA_UPLOAD_MB} MB",
+                )
+            f.write(chunk)
+    return Path(tmp)
+
+
+def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: int, source_ref: str) -> TranscriptResponse:
+    from app.services import transcription_service as ts
+    from app.services.media_ingestion_service import index_transcript_chunks
+
+    result = ts.transcribe_audio(path, language=language)
+    payload = ts.transcript_to_json(result)
+
+    indexed = 0
+    if index and payload["segments"]:
+        try:
+            indexed = index_transcript_chunks(
+                filename=source_ref or path.name,
+                owner_id=owner_id,
+                segments=payload["segments"],
+                source_ref=source_ref or str(path),
+            )
+        except Exception:
+            logger.exception("Transcript indexing failed for %s", source_ref)
+
+    return TranscriptResponse(
+        text=payload["text"],
+        language=payload["language"],
+        duration_seconds=payload["duration_seconds"],
+        model=payload["model"],
+        device=payload["device"],
+        segments=[TranscriptSegmentOut(**s) for s in payload["segments"]],
+        source_ref=source_ref or str(path),
+        indexed_chunks=indexed,
+    )
+
+
+@router.post("/transcribe", response_model=TranscriptResponse)
+async def transcribe_upload(
+    file: UploadFile = File(...),
+    language: Optional[str] = Form(default=None),
+    index: bool = Form(default=True),
+    user: User = Depends(get_current_user),
+):
+    from app.services.media_ingestion_service import is_media_file
+
+    if not is_media_file(file.filename or ""):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported media type. Use .mp3 .mp4 .wav .m4a",
+        )
+    tmp = _save_upload(file)
+    try:
+        import asyncio
+        return await asyncio.to_thread(
+            _do_transcribe, tmp, language, index, user.id, file.filename or tmp.name
+        )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+@router.post("/transcribe-url", response_model=TranscriptResponse)
+async def transcribe_url(
+    payload: TranscribeURLRequest,
+    user: User = Depends(get_current_user),
+):
+    import asyncio
+    from app.services.media_ingestion_service import resolve_media_source
+
+    try:
+        source = await asyncio.to_thread(resolve_media_source, payload.url)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+
+    return await asyncio.to_thread(
+        _do_transcribe, source.local_path, payload.language, payload.index, user.id, source.source_ref
+    )
+
+
+@router.post("/summarize-transcript")
+def summarize_transcript(
+    payload: SummarizeRequest,
+    user: User = Depends(get_current_user),
+):
+    """Summarize a transcript with the configured LLM, preserving timestamps."""
+    from app.providers import Message, get_provider
+    from app.providers.registry import get_model_info
+
+    model = os.getenv("LLM_MODEL", "llama3.2:latest")
+    info = get_model_info(model)
+    provider = get_provider(info.provider if info else "ollama")
+    prompt = (
+        "Summarize this transcript. Keep timestamp markers like [04:15] next to the "
+        "points they refer to.\n\nTRANSCRIPT:\n" + payload.transcript[:12000]
+    )
+    resp = provider.generate(
+        model=model,
+        messages=[Message(role="user", content=prompt)],
+        temperature=0.3,
+        max_tokens=payload.max_tokens,
+    )
+    return {"summary": resp.text, "model": model}
+
+
+@router.post("/vision/analyze", response_model=VisionAnalyzeResponse)
+async def vision_analyze(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    import asyncio
+    from app.services import vision_service as vs
+
+    name = file.filename or ""
+    if vs.is_video_file(name):
+        tmp = _save_upload(file)
+        try:
+            frames = await asyncio.to_thread(vs.sample_video_frames, tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return VisionAnalyzeResponse(
+            ocr_text="\n".join(f["ocr_text"] for f in frames if f["ocr_text"]),
+            ocr_blocks=[],
+            objects=[],
+            width=0,
+            height=0,
+            frames_sampled=len(frames),
+            chart_rows=[],
+        )
+
+    if not vs.is_image_file(name):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported vision file type")
+
+    tmp = _save_upload(file)
+    try:
+        result = await asyncio.to_thread(vs.analyze_image, tmp)
+    finally:
+        tmp.unlink(missing_ok=True)
+    payload = vs.vision_result_to_json(result)
+    return VisionAnalyzeResponse(**payload)
+
+
+@router.get("/ml/adapters")
+def ml_adapters(user: User = Depends(get_current_user)):
+    from app.services.ml_engine_service import get_ml_engine_service
+    return get_ml_engine_service().list_adapters()
+
+
+@router.post("/ml/switch-adapter")
+def ml_switch_adapter(
+    payload: AdapterSwitchRequest,
+    user: User = Depends(get_current_user),
+):
+    from app.services.ml_engine_service import get_ml_engine_service
+    result = get_ml_engine_service().switch_adapter(payload.adapter)
+    return {
+        "adapter": result.adapter,
+        "switched": result.switched,
+        "switch_ms": result.switch_ms,
+        "warmed": result.warmed,
+    }
+
+
+@router.get("/ml/gpu")
+def ml_gpu(user: User = Depends(get_current_user)):
+    from app.services.ml_engine_service import get_ml_engine_service
+    return get_ml_engine_service().get_gpu_status()
+
+
+@router.get("/ml/edge-benchmark")
+def ml_edge_benchmark(
+    input_size: int = Query(default=224, ge=32, le=1024),
+    iterations: int = Query(default=30, ge=5, le=200),
+    user: User = Depends(get_current_user),
+):
+    from app.services.ml_engine_service import get_ml_engine_service
+    t = get_ml_engine_service().simulate_edge_inference(input_size=input_size, iterations=iterations)
+    return {
+        "fps": t.fps,
+        "latency_ms": t.latency_ms,
+        "memory_mb": t.memory_mb,
+        "backend": t.backend,
+        "device": t.device,
+    }

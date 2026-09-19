@@ -70,6 +70,7 @@ from app.rate_limit import enforce_rate_limit
 from app.routers import chat as chat_router
 from app.routers import connectors as connectors_router
 from app.routers import llm as ai_router
+from app.routers import showcase as showcase_router
 from app.services.rag_service import RAGService
 from app.storage import get_storage
 from app.validators import EMAIL_RE, USERNAME_RE, USERNAME_MAX, USERNAME_MIN
@@ -164,6 +165,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(ai_router.router, prefix="/api")
 app.include_router(chat_router.router, prefix="/api")
 app.include_router(connectors_router.router, prefix="/api")
+app.include_router(showcase_router.router, prefix="/api")
 
 # AEO Studio (Answer Engine Optimization) module router.
 # In Docker the omnigrapher package may not be in the backend image, so import

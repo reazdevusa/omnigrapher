@@ -255,6 +255,145 @@ export function getDocumentRawUrl(_token: string, filename: string): string {
   return `${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw`;
 }
 
+// ---------------------------------------------------------------------------
+// Live AI Showcase (speech / vision / ML telemetry)
+// ---------------------------------------------------------------------------
+
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+  start_label: string;
+  end_label: string;
+}
+
+export interface TranscriptResponse {
+  text: string;
+  language?: string;
+  duration_seconds?: number;
+  model: string;
+  device: string;
+  segments: TranscriptSegment[];
+  source_ref: string;
+  indexed_chunks: number;
+}
+
+export interface VisionBlock {
+  text: string;
+  confidence: number;
+  bbox: { x: number; y: number; w: number; h: number };
+}
+
+export interface VisionObject {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label: string;
+  confidence: number;
+}
+
+export interface VisionAnalyzeResponse {
+  ocr_text: string;
+  ocr_blocks: VisionBlock[];
+  objects: VisionObject[];
+  width: number;
+  height: number;
+  frames_sampled: number;
+  chart_rows: string[][];
+}
+
+async function postForm<T>(path: string, formData: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${BACKEND_URL}${path}`, {
+      method: "POST",
+      body: formData,
+    }, UPLOAD_TIMEOUT_MS);
+  } catch (e: any) {
+    throw new Error(e?.message ? String(e.message) : "Upload failed");
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Request failed");
+    let detail = text;
+    try { detail = JSON.parse(text).detail ?? text; } catch {}
+    throw new Error(String(detail));
+  }
+  return res.json();
+}
+
+export async function transcribeMediaUpload(token: string, file: File): Promise<TranscriptResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("index", "true");
+  return postForm("/api/showcase/transcribe", fd);
+}
+
+export async function transcribeMediaUrl(token: string, url: string): Promise<TranscriptResponse> {
+  return fetchJson("/api/showcase/transcribe-url", {
+    method: "POST",
+    body: JSON.stringify({ url, index: true }),
+  }, token);
+}
+
+export async function summarizeTranscript(token: string, transcript: string): Promise<{ summary: string; model: string }> {
+  return fetchJson("/api/showcase/summarize-transcript", {
+    method: "POST",
+    body: JSON.stringify({ transcript }),
+  }, token);
+}
+
+export async function analyzeVisionFile(token: string, file: File): Promise<VisionAnalyzeResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  return postForm("/api/showcase/vision/analyze", fd);
+}
+
+export interface MLAdaptersResponse {
+  engine_url: string;
+  engine_reachable: boolean;
+  use_peft_adapters: boolean;
+  external_drive_ready: boolean;
+  active_adapter?: string | null;
+  domains: Record<string, string | null>;
+  engine_adapters: string[];
+}
+
+export async function getMLAdapters(token: string): Promise<MLAdaptersResponse> {
+  return fetchJson("/api/showcase/ml/adapters", {}, token);
+}
+
+export async function switchMLAdapter(token: string, adapter: string): Promise<{ adapter: string; switched: boolean; switch_ms: number; warmed: boolean }> {
+  return fetchJson("/api/showcase/ml/switch-adapter", {
+    method: "POST",
+    body: JSON.stringify({ adapter }),
+  }, token);
+}
+
+export interface GPUSStatus {
+  gpu_available: boolean;
+  device_count: number;
+  vram_total_mb: number | null;
+  vram_used_mb: number | null;
+  device_name: string | null;
+}
+
+export async function getMLGpu(token: string): Promise<GPUSStatus> {
+  return fetchJson("/api/showcase/ml/gpu", {}, token);
+}
+
+export interface EdgeBenchmark {
+  fps: number;
+  latency_ms: number;
+  memory_mb: number;
+  backend: string;
+  device: string;
+}
+
+export async function runEdgeBenchmark(token: string, inputSize = 224, iterations = 30): Promise<EdgeBenchmark> {
+  return fetchJson(`/api/showcase/ml/edge-benchmark?input_size=${inputSize}&iterations=${iterations}`, {}, token);
+}
+
 export async function getDocumentRaw(_token: string, filename: string): Promise<Response> {
   const res = await fetch(`${BACKEND_URL}/api/documents/${encodeURIComponent(filename)}/raw`, {
     credentials: "include",

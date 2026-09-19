@@ -46,3 +46,8 @@ pillow
 
 # GraphRAG knowledge graph backend (embedded, Cypher-compatible)
 kuzu
+
+# Live AI Showcase: speech, media ingestion, ONNX graph building (all lazy-imported)
+faster-whisper
+yt-dlp
+onnx
