@@ -35,12 +35,12 @@ function getHeaders() {
   };
 }
 
-async function fetchJson(path: string, options: RequestInit = {}, _token?: string | null) {
+async function fetchJson(path: string, options: RequestInit = {}, _token?: string | null, timeoutMs = REQUEST_TIMEOUT_MS) {
   let res: Response | undefined;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       res = await fetch(`${BACKEND_URL}${path}`, {
         ...options,
@@ -327,14 +327,14 @@ export async function askMediaQuestion(token: string, question: string, sourceRe
   return fetchJson("/api/showcase/ask", {
     method: "POST",
     body: JSON.stringify({ question, source_ref: sourceRef || null, top_k: topK }),
-  }, token);
+  }, token, 120_000);
 }
 
 export async function askVisualQuestion(token: string, question: string, sourceRef?: string, topK = 6): Promise<MediaAskResponse> {
   return fetchJson("/api/showcase/visual-ask", {
     method: "POST",
     body: JSON.stringify({ question, source_ref: sourceRef || null, top_k: topK }),
-  }, token);
+  }, token, 120_000);
 }
 
 async function postForm<T>(path: string, formData: FormData): Promise<T> {
@@ -367,14 +367,14 @@ export async function transcribeMediaUrl(token: string, url: string): Promise<Tr
   return fetchJson("/api/showcase/transcribe-url", {
     method: "POST",
     body: JSON.stringify({ url, index: true }),
-  }, token);
+  }, token, UPLOAD_TIMEOUT_MS);
 }
 
 export async function summarizeTranscript(token: string, transcript: string): Promise<{ summary: string; model: string }> {
   return fetchJson("/api/showcase/summarize-transcript", {
     method: "POST",
     body: JSON.stringify({ transcript }),
-  }, token);
+  }, token, 120_000);
 }
 
 export async function analyzeVisionFile(token: string, file: File): Promise<VisionAnalyzeResponse> {
