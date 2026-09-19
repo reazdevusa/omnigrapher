@@ -276,6 +276,7 @@ export interface TranscriptResponse {
   segments: TranscriptSegment[];
   source_ref: string;
   indexed_chunks: number;
+  graph_entities: number;
 }
 
 export interface VisionBlock {
@@ -301,6 +302,39 @@ export interface VisionAnalyzeResponse {
   height: number;
   frames_sampled: number;
   chart_rows: string[][];
+  caption: string;
+  source_ref: string;
+  indexed_chunks: number;
+}
+
+export interface MediaCitation {
+  file_name: string;
+  source_ref: string;
+  start: number;
+  end: number;
+  start_label: string;
+  text: string;
+  score: number;
+}
+
+export interface MediaAskResponse {
+  answer: string;
+  citations: MediaCitation[];
+  model: string;
+}
+
+export async function askMediaQuestion(token: string, question: string, sourceRef?: string, topK = 6): Promise<MediaAskResponse> {
+  return fetchJson("/api/showcase/ask", {
+    method: "POST",
+    body: JSON.stringify({ question, source_ref: sourceRef || null, top_k: topK }),
+  }, token);
+}
+
+export async function askVisualQuestion(token: string, question: string, sourceRef?: string, topK = 6): Promise<MediaAskResponse> {
+  return fetchJson("/api/showcase/visual-ask", {
+    method: "POST",
+    body: JSON.stringify({ question, source_ref: sourceRef || null, top_k: topK }),
+  }, token);
 }
 
 async function postForm<T>(path: string, formData: FormData): Promise<T> {

@@ -374,7 +374,11 @@ class TestShowcaseRouter(unittest.TestCase):
         fake_pkg.WhisperModel = _FakeWhisperModel
 
         with mock.patch.dict(sys.modules, {"faster_whisper": fake_pkg}), \
-             mock.patch.object(media_svc, "index_transcript_chunks", return_value=3):
+             mock.patch.object(media_svc, "index_transcript_chunks", return_value=3), \
+             mock.patch.object(
+                 media_svc, "index_transcript_graph",
+                 return_value={"status": "indexed", "entities": 5, "relationships": 2},
+             ):
             resp = self.client.post(
                 "/api/showcase/transcribe",
                 files={"file": ("demo.wav", b"RIFF-fake-audio", "audio/wav")},
@@ -385,6 +389,7 @@ class TestShowcaseRouter(unittest.TestCase):
         self.assertEqual(len(data["segments"]), 3)
         self.assertEqual(data["segments"][2]["start_label"], "00:06")
         self.assertEqual(data["indexed_chunks"], 3)
+        self.assertEqual(data["graph_entities"], 5)
 
     def test_transcribe_url_missing_file(self):
         resp = self.client.post(
@@ -421,6 +426,215 @@ class TestShowcaseRouter(unittest.TestCase):
         app.dependency_overrides.clear()
         resp = self.client.get("/api/showcase/ml/adapters")
         self.assertIn(resp.status_code, (401, 403))
+
+
+# ---------------------------------------------------------------------------
+# Multimedia Q&A + GraphRAG indexing
+# ---------------------------------------------------------------------------
+
+class TestMediaQA(unittest.TestCase):
+    def test_query_media_chunks_builds_filtered_query(self):
+        captured = {}
+
+        class _FakeCollection:
+            def count(self):
+                return 10
+
+            def query(self, query_embeddings, n_results, where, include):
+                captured["where"] = where
+                captured["n_results"] = n_results
+                return {
+                    "documents": [["[Source: meeting.mp4 @ 04:15] adapters discussed"]],
+                    "metadatas": [[{
+                        "file_name": "meeting.mp4",
+                        "source_ref": "meeting.mp4",
+                        "start": 255.0,
+                        "end": 260.0,
+                        "start_label": "04:15",
+                    }]],
+                    "distances": [[0.2]],
+                }
+
+        class _FakeEmbed:
+            def get_text_embedding(self, text):
+                return [0.1] * 8
+
+        fake_rag = SimpleNamespace(
+            _get_knowledge_base_collection=lambda: _FakeCollection(),
+            _get_embed_model=lambda: _FakeEmbed(),
+        )
+        with mock.patch.dict(sys.modules, {"app.rag_engine": fake_rag}):
+            hits = media_svc.query_media_chunks(
+                question="what about adapters?",
+                owner_id=7,
+                source_ref="meeting.mp4",
+                top_k=4,
+            )
+
+        self.assertEqual(captured["n_results"], 4)
+        # owner + media_type + source scoping all present in the where clause
+        self.assertIn("$and", captured["where"])
+        clauses = captured["where"]["$and"]
+        self.assertIn({"owner_id": 7}, clauses)
+        self.assertIn({"media_type": "audio_transcript"}, clauses)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["start_label"], "04:15")
+        self.assertAlmostEqual(hits[0]["score"], 0.8)
+
+    def test_index_transcript_graph_uses_synthetic_doc_id(self):
+        ingested = {}
+
+        def _fake_ingest(doc_id, fname, chunks):
+            ingested.update({"doc_id": doc_id, "filename": fname, "chunks": chunks})
+            return {"status": "indexed", "entities": 3, "relationships": 1}
+
+        segments = [{"start": 255.0, "end": 260.0, "text": "Later topic"}]
+        import app.services.graph_rag as real_graph
+        with mock.patch.object(real_graph, "is_available", return_value=True), \
+             mock.patch.object(real_graph, "ingest_document_graph", side_effect=_fake_ingest):
+            out = media_svc.index_transcript_graph(
+                filename="meeting.mp4", owner_id=7,
+                segments=segments, source_ref="meeting.mp4",
+            )
+
+        self.assertEqual(out["entities"], 3)
+        # negative synthetic id — can never collide with real DB document ids
+        self.assertLess(ingested["doc_id"], 0)
+        self.assertIn("[Source: meeting.mp4 @ 04:15]", ingested["chunks"][0]["text"])
+
+    def test_index_transcript_graph_skipped_when_disabled(self):
+        import app.services.graph_rag as real_graph
+        with mock.patch.object(real_graph, "is_available", return_value=False):
+            out = media_svc.index_transcript_graph(
+                filename="m.mp4", owner_id=1,
+                segments=[{"start": 0, "end": 1, "text": "x"}],
+                source_ref="m.mp4",
+            )
+        self.assertEqual(out["status"], "skipped")
+
+
+class TestVisualIndexing(unittest.TestCase):
+    def test_index_visual_features_embeds_all_modalities(self):
+        calls = {}
+
+        class _FakeCollection:
+            def upsert(self, ids, documents, metadatas, embeddings):
+                calls["documents"] = documents
+                calls["metadatas"] = metadatas
+
+        class _FakeEmbed:
+            def get_text_embedding(self, text):
+                return [0.5, 0.5]
+
+        fake_rag = SimpleNamespace(
+            _get_knowledge_base_collection=lambda: _FakeCollection(),
+            _get_embed_model=lambda: _FakeEmbed(),
+        )
+        result = vs_svc.VisionResult(
+            ocr_text="Revenue 42",
+            objects=[vs_svc.BoundingBox(x=1, y=2, w=30, h=40, label="region", confidence=0.5)],
+            chart_rows=[["Revenue", "42"]],
+            caption="A bar chart of revenue.",
+        )
+        with mock.patch.dict(sys.modules, {"app.rag_engine": fake_rag}):
+            n = vs_svc.index_visual_features("chart.png", 9, result, "chart.png")
+
+        self.assertEqual(n, len(calls["documents"]))
+        joined = "\n".join(calls["documents"])
+        self.assertIn("VLM description", joined)
+        self.assertIn("OCR text", joined)
+        self.assertIn("Chart data: Revenue = 42", joined)
+        self.assertIn("Detected regions", joined)
+        self.assertTrue(all(m["media_type"] == "visual" for m in calls["metadatas"]))
+        self.assertTrue(all(m["owner_id"] == 9 for m in calls["metadatas"]))
+
+    def test_vlm_caption_disabled_without_model(self):
+        with mock.patch.object(vs_svc, "VLM_MODEL", ""):
+            self.assertEqual(vs_svc.describe_image_with_vlm("x.png"), "")
+
+    def test_vlm_caption_via_ollama(self):
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"response": "A diagram showing a pipeline."}
+
+        import tempfile
+        from pathlib import Path
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            f.write(b"\x89PNG-fake")
+            p = f.name
+        try:
+            with mock.patch.object(vs_svc, "VLM_MODEL", "llava:test"), \
+                 mock.patch("requests.post", return_value=_Resp()) as post:
+                caption = vs_svc.describe_image_with_vlm(p)
+            self.assertEqual(caption, "A diagram showing a pipeline.")
+            payload = post.call_args.kwargs["json"]
+            self.assertEqual(payload["model"], "llava:test")
+            self.assertEqual(len(payload["images"]), 1)
+        finally:
+            Path(p).unlink(missing_ok=True)
+
+
+class TestAskEndpoints(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+        self.auth_user = SimpleNamespace(id=42, role="admin", api_keys={})
+        app.dependency_overrides[get_current_user] = lambda: self.auth_user
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
+
+    _HITS = [{
+        "text": "[Source: meeting.mp4 @ 04:15] adapters discussed",
+        "file_name": "meeting.mp4",
+        "source_ref": "meeting.mp4",
+        "start": 255.0,
+        "end": 260.0,
+        "start_label": "04:15",
+        "score": 0.9,
+    }]
+
+    def test_media_ask_returns_answer_with_citations(self):
+        import app.routers.showcase as sc
+        with mock.patch.object(media_svc, "query_media_chunks", return_value=self._HITS), \
+             mock.patch.object(sc, "_graph_context_passages", return_value=[]), \
+             mock.patch.object(sc, "_generate_answer", return_value="Adapters were covered [Source: meeting.mp4 @ 04:15]."):
+            resp = self.client.post(
+                "/api/showcase/ask",
+                json={"question": "what about adapters?", "source_ref": "meeting.mp4"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("adapters", data["answer"].lower())
+        self.assertEqual(data["citations"][0]["start_label"], "04:15")
+
+    def test_media_ask_empty_index_returns_guidance(self):
+        with mock.patch.object(media_svc, "query_media_chunks", return_value=[]):
+            resp = self.client.post("/api/showcase/ask", json={"question": "anything"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("Transcribe or analyze", resp.json()["answer"])
+
+    def test_visual_ask_endpoint(self):
+        import app.routers.showcase as sc
+        hits = [{
+            "text": "[Image: chart.png] Chart data: Revenue = 42",
+            "file_name": "chart.png",
+            "source_ref": "chart.png",
+            "start": 0.0, "end": 0.0, "start_label": "", "score": 0.7,
+        }]
+        with mock.patch.object(media_svc, "query_media_chunks", return_value=hits) as q, \
+             mock.patch.object(sc, "_graph_context_passages", return_value=[]), \
+             mock.patch.object(sc, "_generate_answer", return_value="Revenue is 42 [Source: chart.png]."):
+            resp = self.client.post(
+                "/api/showcase/visual-ask",
+                json={"question": "what is the revenue?", "source_ref": "chart.png"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        # visual asks must filter on the visual media_type
+        self.assertEqual(q.call_args.kwargs["media_type"], "visual")
+        self.assertEqual(resp.json()["citations"][0]["file_name"], "chart.png")
 
 
 if __name__ == "__main__":

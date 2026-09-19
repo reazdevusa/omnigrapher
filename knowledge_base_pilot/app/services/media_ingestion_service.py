@@ -7,9 +7,10 @@ timestamped transcript chunks into ChromaDB for RAG/agent Q&A with citations.
 import logging
 import os
 import tempfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -131,3 +132,99 @@ def index_transcript_chunks(
     collection.upsert(ids=ids, documents=docs, metadatas=metas, embeddings=embeddings)
     logger.info("Indexed %d transcript chunks for %s (owner=%s)", len(ids), filename, owner_id)
     return len(ids)
+
+
+def index_transcript_graph(
+    filename: str,
+    owner_id: int,
+    segments: List[dict],
+    source_ref: str,
+) -> Dict[str, Any]:
+    """Index transcript chunks into the GraphRAG (Kuzu) store so entity/relationship
+    traversal works for media sources too. Returns a summary dict; degrades to
+    {"status": "skipped"} when GraphRAG is disabled or unavailable."""
+    try:
+        from app.services import graph_rag
+    except Exception:  # pragma: no cover
+        return {"status": "skipped", "reason": "graph_rag module unavailable"}
+
+    if not graph_rag.is_available():
+        return {"status": "skipped", "reason": "GRAPH_RAG_ENABLED=false"}
+    if not segments:
+        return {"status": "skipped", "reason": "no segments"}
+
+    from app.services.transcription_service import format_timestamp
+
+    # Media sources have no DB document row; use a stable negative id derived
+    # from the source ref so re-ingestion replaces the old graph instead of
+    # duplicating it and real document ids can never collide.
+    document_id = -(zlib.crc32(source_ref.encode("utf-8")) % 900_000_000) - 1
+
+    parent_chunks = [
+        {
+            "parent_id": f"{filename}::segment::{i}",
+            "text": f"[Source: {filename} @ {format_timestamp(seg['start'])}] {seg['text']}",
+            "source": source_ref or filename,
+            "page": 0,
+        }
+        for i, seg in enumerate(segments)
+    ]
+    try:
+        return graph_rag.ingest_document_graph(document_id, filename, parent_chunks)
+    except Exception:
+        logger.exception("GraphRAG transcript indexing failed for %s", filename)
+        return {"status": "error"}
+
+
+def query_media_chunks(
+    question: str,
+    owner_id: int,
+    source_ref: Optional[str] = None,
+    media_type: str = "audio_transcript",
+    top_k: int = 6,
+) -> List[Dict[str, Any]]:
+    """Vector-search the indexed media chunks owned by this user.
+
+    Optionally scopes to one media file (by file_name or source_ref) so Q&A can
+    be targeted at the item currently open in the showcase UI."""
+    from app.rag_engine import _get_embed_model, _get_knowledge_base_collection
+
+    collection = _get_knowledge_base_collection()
+    if collection.count() == 0:
+        return []
+
+    filters: List[Dict[str, Any]] = [
+        {"owner_id": owner_id},
+        {"media_type": media_type},
+    ]
+    if source_ref:
+        filters.append(
+            {"$or": [{"file_name": source_ref}, {"source_ref": source_ref}]}
+        )
+    where: Dict[str, Any] = filters[0] if len(filters) == 1 else {"$and": filters}
+
+    embed = _get_embed_model()
+    query_embedding = embed.get_text_embedding(question)
+    result = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=max(1, top_k),
+        where=where,
+        include=["documents", "metadatas", "distances"],
+    )
+
+    docs = (result.get("documents") or [[]])[0]
+    metas = (result.get("metadatas") or [[]])[0]
+    dists = (result.get("distances") or [[]])[0]
+
+    hits: List[Dict[str, Any]] = []
+    for doc, meta, dist in zip(docs, metas, dists):
+        hits.append({
+            "text": doc or "",
+            "file_name": (meta or {}).get("file_name", ""),
+            "source_ref": (meta or {}).get("source_ref", ""),
+            "start": float((meta or {}).get("start", 0.0) or 0.0),
+            "end": float((meta or {}).get("end", 0.0) or 0.0),
+            "start_label": (meta or {}).get("start_label", ""),
+            "score": float(1.0 - dist) if dist is not None else 0.0,
+        })
+    return hits

@@ -36,6 +36,7 @@ class VisionResult:
     height: int = 0
     frames_sampled: int = 0
     chart_rows: List[List[str]] = field(default_factory=list)
+    caption: str = ""
 
 
 def is_image_file(filename: str) -> bool:
@@ -76,7 +77,40 @@ def _np():
     return np
 
 
-def analyze_image(path: str | Path) -> VisionResult:
+VLM_MODEL = os.getenv("VLM_MODEL", "")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+
+
+def describe_image_with_vlm(path: str | Path) -> str:
+    """Optional vision-language-model caption via Ollama (e.g. VLM_MODEL=llava).
+    Returns an empty string when no VLM is configured or reachable — callers
+    treat it as best-effort enrichment, never a hard dependency."""
+    if not VLM_MODEL:
+        return ""
+    try:
+        import base64
+
+        import requests
+
+        image_b64 = base64.b64encode(Path(path).read_bytes()).decode("ascii")
+        resp = requests.post(
+            f"{OLLAMA_BASE_URL}/api/generate",
+            json={
+                "model": VLM_MODEL,
+                "prompt": "Describe this image in detail, including any text, diagrams, and charts.",
+                "images": [image_b64],
+                "stream": False,
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return (resp.json().get("response") or "").strip()
+    except Exception:
+        logger.warning("VLM caption failed for %s", path, exc_info=True)
+        return ""
+
+
+def analyze_image(path: str | Path, use_vlm: bool = True) -> VisionResult:
     """Run OCR (bounding boxes) + classical CV region detection on an image."""
     cv2 = _cv2()
     img = cv2.imread(str(path))
@@ -107,6 +141,7 @@ def analyze_image(path: str | Path) -> VisionResult:
 
     objects = _detect_regions(img)
     chart_rows = _extract_chart_rows(ocr_lines)
+    caption = describe_image_with_vlm(path) if use_vlm else ""
 
     return VisionResult(
         ocr_text="\n".join(ocr_lines),
@@ -115,6 +150,7 @@ def analyze_image(path: str | Path) -> VisionResult:
         width=width,
         height=height,
         chart_rows=chart_rows,
+        caption=caption,
     )
 
 
@@ -204,6 +240,55 @@ def sample_video_frames(path: str | Path, max_frames: int = 8) -> List[Dict[str,
     return samples
 
 
+def index_visual_features(
+    filename: str,
+    owner_id: int,
+    result: VisionResult,
+    source_ref: str,
+) -> int:
+    """Embed extracted visual features (OCR text, chart rows, detected regions,
+    VLM caption) into the shared knowledge-base collection so the image is
+    searchable and can ground diagram Q&A."""
+    from app.rag_engine import _get_embed_model, _get_knowledge_base_collection
+
+    docs: List[str] = []
+    if result.caption:
+        docs.append(f"[Image: {filename}] VLM description: {result.caption}")
+    if result.ocr_text:
+        docs.append(f"[Image: {filename}] OCR text: {result.ocr_text[:4000]}")
+    for label, value in result.chart_rows[:50]:
+        docs.append(f"[Image: {filename}] Chart data: {label} = {value}")
+    if result.objects:
+        regions = "; ".join(
+            f"{b.label} at ({b.x},{b.y}) size {b.w}x{b.h}" for b in result.objects[:20]
+        )
+        docs.append(f"[Image: {filename}] Detected regions: {regions}")
+
+    if not docs:
+        return 0
+
+    collection = _get_knowledge_base_collection()
+    embed = _get_embed_model()
+    ids, metas, embeddings = [], [], []
+    for i, doc in enumerate(docs):
+        ids.append(f"{filename}::visual::{i}")
+        metas.append({
+            "file_name": filename,
+            "owner_id": owner_id,
+            "source_ref": source_ref or filename,
+            "media_type": "visual",
+            "start": 0.0,
+            "end": 0.0,
+            "start_label": "",
+            "page": 0,
+        })
+        embeddings.append(embed.get_text_embedding(doc))
+
+    collection.upsert(ids=ids, documents=docs, metadatas=metas, embeddings=embeddings)
+    logger.info("Indexed %d visual feature chunks for %s (owner=%s)", len(ids), filename, owner_id)
+    return len(ids)
+
+
 def vision_result_to_json(result: VisionResult) -> dict:
     return {
         "ocr_text": result.ocr_text,
@@ -213,4 +298,5 @@ def vision_result_to_json(result: VisionResult) -> dict:
         "height": result.height,
         "frames_sampled": result.frames_sampled,
         "chart_rows": result.chart_rows,
+        "caption": result.caption,
     }

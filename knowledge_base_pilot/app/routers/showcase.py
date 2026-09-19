@@ -45,6 +45,7 @@ class TranscriptResponse(BaseModel):
     segments: List[TranscriptSegmentOut] = Field(default_factory=list)
     source_ref: str = ""
     indexed_chunks: int = 0
+    graph_entities: int = 0
 
 
 class TranscribeURLRequest(BaseModel):
@@ -56,6 +57,28 @@ class TranscribeURLRequest(BaseModel):
 class SummarizeRequest(BaseModel):
     transcript: str
     max_tokens: int = 512
+
+
+class MediaAskRequest(BaseModel):
+    question: str
+    source_ref: Optional[str] = None  # scope to one media file when provided
+    top_k: int = Field(default=6, ge=1, le=20)
+
+
+class MediaCitationOut(BaseModel):
+    file_name: str
+    source_ref: str
+    start: float = 0.0
+    end: float = 0.0
+    start_label: str = ""
+    text: str
+    score: float = 0.0
+
+
+class MediaAskResponse(BaseModel):
+    answer: str
+    citations: List[MediaCitationOut] = Field(default_factory=list)
+    model: str
 
 
 class VisionBlockOut(BaseModel):
@@ -81,6 +104,9 @@ class VisionAnalyzeResponse(BaseModel):
     height: int
     frames_sampled: int = 0
     chart_rows: List[List[str]] = Field(default_factory=list)
+    caption: str = ""
+    source_ref: str = ""
+    indexed_chunks: int = 0
 
 
 class FrameSampleOut(BaseModel):
@@ -124,6 +150,7 @@ def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: i
     payload = ts.transcript_to_json(result)
 
     indexed = 0
+    graph_entities = 0
     if index and payload["segments"]:
         try:
             indexed = index_transcript_chunks(
@@ -134,6 +161,17 @@ def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: i
             )
         except Exception:
             logger.exception("Transcript indexing failed for %s", source_ref)
+        try:
+            from app.services.media_ingestion_service import index_transcript_graph
+            graph = index_transcript_graph(
+                filename=source_ref or path.name,
+                owner_id=owner_id,
+                segments=payload["segments"],
+                source_ref=source_ref or str(path),
+            )
+            graph_entities = int(graph.get("entities", 0))
+        except Exception:
+            logger.exception("Transcript graph indexing failed for %s", source_ref)
 
     return TranscriptResponse(
         text=payload["text"],
@@ -144,6 +182,7 @@ def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: i
         segments=[TranscriptSegmentOut(**s) for s in payload["segments"]],
         source_ref=source_ref or str(path),
         indexed_chunks=indexed,
+        graph_entities=graph_entities,
     )
 
 
@@ -191,6 +230,103 @@ async def transcribe_url(
     )
 
 
+def _generate_answer(question: str, context_chunks: List[str], instruction: str) -> str:
+    """Run the configured LLM provider over retrieved media context."""
+    from app.providers import Message, get_provider
+    from app.providers.registry import get_model_info
+
+    model = os.getenv("LLM_MODEL", "llama3.2:latest")
+    info = get_model_info(model)
+    provider = get_provider(info.provider if info else "ollama")
+    context = "\n\n".join(context_chunks)[:12000]
+    prompt = f"{instruction}\n\nCONTEXT:\n{context}\n\nQUESTION: {question}\n\nANSWER:"
+    resp = provider.generate(
+        model=model,
+        messages=[Message(role="user", content=prompt)],
+        temperature=0.2,
+        max_tokens=512,
+    )
+    return resp.text
+
+
+def _graph_context_passages(question: str) -> List[str]:
+    """Best-effort GraphRAG entity passages merged into the prompt context."""
+    try:
+        from app.services import graph_rag
+        if not graph_rag.is_available():
+            return []
+        return [p.get("text", "") for p in graph_rag.graph_context(question, top_k=3) if p.get("text")]
+    except Exception:
+        logger.exception("Graph context lookup failed")
+        return []
+
+
+def _do_media_ask(payload: MediaAskRequest, owner_id: int, media_type: str, instruction: str) -> MediaAskResponse:
+    from app.services.media_ingestion_service import query_media_chunks
+
+    hits = query_media_chunks(
+        question=payload.question,
+        owner_id=owner_id,
+        source_ref=payload.source_ref,
+        media_type=media_type,
+        top_k=payload.top_k,
+    )
+    context_chunks = [h["text"] for h in hits]
+    context_chunks.extend(_graph_context_passages(payload.question))
+
+    if not context_chunks:
+        return MediaAskResponse(
+            answer="No indexed media found for this question. Transcribe or analyze media first.",
+            citations=[],
+            model=os.getenv("LLM_MODEL", "llama3.2:latest"),
+        )
+
+    answer = _generate_answer(payload.question, context_chunks, instruction)
+    return MediaAskResponse(
+        answer=answer,
+        citations=[MediaCitationOut(**h) for h in hits],
+        model=os.getenv("LLM_MODEL", "llama3.2:latest"),
+    )
+
+
+@router.post("/ask", response_model=MediaAskResponse)
+def media_ask(
+    payload: MediaAskRequest,
+    user: User = Depends(get_current_user),
+):
+    """Answer questions over indexed transcripts with timestamped citations."""
+    return _do_media_ask(
+        payload,
+        user.id,
+        media_type="audio_transcript",
+        instruction=(
+            "You are a multimedia Q&A assistant. Answer using ONLY the transcript "
+            "excerpts below. Every excerpt is prefixed with a citation marker like "
+            "'[Source: file.mp4 @ 04:15]'. Repeat the relevant marker after each "
+            "claim so the user can jump to that timestamp."
+        ),
+    )
+
+
+@router.post("/visual-ask", response_model=MediaAskResponse)
+def visual_ask(
+    payload: MediaAskRequest,
+    user: User = Depends(get_current_user),
+):
+    """Diagram/image-grounded Q&A over indexed visual features (OCR, charts, captions)."""
+    return _do_media_ask(
+        payload,
+        user.id,
+        media_type="visual",
+        instruction=(
+            "You are a visual-intelligence assistant. Answer using ONLY the image "
+            "analysis excerpts below (OCR text, chart data, detected regions, VLM "
+            "captions). Cite the image file name in brackets, e.g. '[Source: diagram.png]', "
+            "after each claim."
+        ),
+    )
+
+
 @router.post("/summarize-transcript")
 def summarize_transcript(
     payload: SummarizeRequest,
@@ -219,6 +355,7 @@ def summarize_transcript(
 @router.post("/vision/analyze", response_model=VisionAnalyzeResponse)
 async def vision_analyze(
     file: UploadFile = File(...),
+    index: bool = Form(default=True),
     user: User = Depends(get_current_user),
 ):
     import asyncio
@@ -239,6 +376,7 @@ async def vision_analyze(
             height=0,
             frames_sampled=len(frames),
             chart_rows=[],
+            source_ref=name,
         )
 
     if not vs.is_image_file(name):
@@ -249,8 +387,22 @@ async def vision_analyze(
         result = await asyncio.to_thread(vs.analyze_image, tmp)
     finally:
         tmp.unlink(missing_ok=True)
+
+    indexed = 0
+    if index:
+        try:
+            indexed = await asyncio.to_thread(
+                vs.index_visual_features, name, user.id, result, name
+            )
+        except Exception:
+            logger.exception("Visual feature indexing failed for %s", name)
+
     payload = vs.vision_result_to_json(result)
-    return VisionAnalyzeResponse(**payload)
+    return VisionAnalyzeResponse(
+        **payload,
+        source_ref=name,
+        indexed_chunks=indexed,
+    )
 
 
 @router.get("/ml/adapters")

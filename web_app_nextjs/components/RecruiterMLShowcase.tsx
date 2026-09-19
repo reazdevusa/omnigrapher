@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Link as LinkIcon,
   Loader2,
+  MessageSquare,
   Mic,
   ScanEye,
   Sparkles,
@@ -98,6 +99,9 @@ function SpeechTab() {
   const [result, setResult] = React.useState<api.TranscriptResponse | null>(null);
   const [summary, setSummary] = React.useState("");
   const [summarizing, setSummarizing] = React.useState(false);
+  const [question, setQuestion] = React.useState("");
+  const [askResult, setAskResult] = React.useState<api.MediaAskResponse | null>(null);
+  const [asking, setAsking] = React.useState(false);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
   const runUpload = async (file: File) => {
@@ -105,10 +109,11 @@ function SpeechTab() {
     setBusy(true);
     setResult(null);
     setSummary("");
+    setAskResult(null);
     try {
       const r = await api.transcribeMediaUpload(token, file);
       setResult(r);
-      toast.success(`Transcribed ${r.segments.length} segments (${r.indexed_chunks} indexed)`);
+      toast.success(`Transcribed ${r.segments.length} segments (${r.indexed_chunks} indexed${r.graph_entities ? `, ${r.graph_entities} graph entities` : ""})`);
     } catch (e: any) {
       toast.error(e.message || "Transcription failed");
     } finally {
@@ -122,6 +127,7 @@ function SpeechTab() {
     setBusy(true);
     setResult(null);
     setSummary("");
+    setAskResult(null);
     try {
       const r = await api.transcribeMediaUrl(token, url.trim());
       setResult(r);
@@ -143,6 +149,19 @@ function SpeechTab() {
       toast.error(e.message || "Summarization failed");
     } finally {
       setSummarizing(false);
+    }
+  };
+
+  const runAsk = async () => {
+    if (!token || !result || !question.trim()) return;
+    setAsking(true);
+    try {
+      const r = await api.askMediaQuestion(token, question.trim(), result.source_ref);
+      setAskResult(r);
+    } catch (e: any) {
+      toast.error(e.message || "Q&A failed");
+    } finally {
+      setAsking(false);
     }
   };
 
@@ -239,6 +258,50 @@ function SpeechTab() {
           {result.source_ref.match(/\.(mp4|webm|mov|mkv)$/i) && (
             <video ref={videoRef} controls className="w-full rounded-lg border border-border" src={result.source_ref.startsWith("http") ? result.source_ref : undefined} />
           )}
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" /> Multimedia Q&amp;A
+              </CardTitle>
+              <CardDescription>
+                Ask questions about this transcript — answers cite exact timestamps
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Input
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="e.g. What did they say about adapters?"
+                  disabled={asking}
+                  onKeyDown={(e) => e.key === "Enter" && runAsk()}
+                />
+                <Button onClick={runAsk} disabled={asking || !question.trim()}>
+                  {asking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Ask"}
+                </Button>
+              </div>
+              {askResult && (
+                <div className="space-y-2">
+                  <p className="text-sm whitespace-pre-wrap">{askResult.answer}</p>
+                  {askResult.citations.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {askResult.citations.map((c, i) => (
+                        <button
+                          key={i}
+                          onClick={() => seekTo(c.start)}
+                          title={c.text.slice(0, 120)}
+                          className="font-mono text-xs text-primary hover:underline border border-border rounded px-1.5 py-0.5"
+                        >
+                          [{c.file_name} @ {c.start_label || `${c.start.toFixed(0)}s`}]
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
@@ -255,22 +318,39 @@ function VisionTab() {
   const [preview, setPreview] = React.useState<string | null>(null);
   const [imgSize, setImgSize] = React.useState<{ w: number; h: number } | null>(null);
   const [result, setResult] = React.useState<api.VisionAnalyzeResponse | null>(null);
+  const [vQuestion, setVQuestion] = React.useState("");
+  const [vAnswer, setVAnswer] = React.useState<api.MediaAskResponse | null>(null);
+  const [vAsking, setVAsking] = React.useState(false);
   const imgRef = React.useRef<HTMLImageElement | null>(null);
 
   const run = async (file: File) => {
     if (!token) return toast.error("Please sign in first");
     setBusy(true);
     setResult(null);
+    setVAnswer(null);
     const url = URL.createObjectURL(file);
     setPreview(url);
     try {
       const r = await api.analyzeVisionFile(token, file);
       setResult(r);
-      toast.success(`Vision analysis done — ${r.ocr_blocks.length} OCR blocks, ${r.objects.length} regions`);
+      toast.success(`Vision analysis done — ${r.ocr_blocks.length} OCR blocks, ${r.objects.length} regions, ${r.indexed_chunks} chunks indexed`);
     } catch (e: any) {
       toast.error(e.message || "Vision analysis failed");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runVAsk = async () => {
+    if (!token || !result || !vQuestion.trim()) return;
+    setVAsking(true);
+    try {
+      const r = await api.askVisualQuestion(token, vQuestion.trim(), result.source_ref);
+      setVAnswer(r);
+    } catch (e: any) {
+      toast.error(e.message || "Visual Q&A failed");
+    } finally {
+      setVAsking(false);
     }
   };
 
@@ -387,6 +467,15 @@ function VisionTab() {
               </CardContent>
             </Card>
 
+            {result.caption && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">VLM caption</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm whitespace-pre-wrap">{result.caption}</CardContent>
+              </Card>
+            )}
+
             {result.frames_sampled > 0 && (
               <Card>
                 <CardHeader className="pb-2">
@@ -394,6 +483,50 @@ function VisionTab() {
                 </CardHeader>
               </Card>
             )}
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" /> Visual chat
+                </CardTitle>
+                <CardDescription>
+                  Diagram-grounded Q&amp;A over the indexed visual features
+                  {result.indexed_chunks > 0 && ` (${result.indexed_chunks} chunks indexed)`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    value={vQuestion}
+                    onChange={(e) => setVQuestion(e.target.value)}
+                    placeholder="e.g. What does this chart show?"
+                    disabled={vAsking}
+                    onKeyDown={(e) => e.key === "Enter" && runVAsk()}
+                  />
+                  <Button onClick={runVAsk} disabled={vAsking || !vQuestion.trim()}>
+                    {vAsking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Ask"}
+                  </Button>
+                </div>
+                {vAnswer && (
+                  <div className="space-y-2">
+                    <p className="text-sm whitespace-pre-wrap">{vAnswer.answer}</p>
+                    {vAnswer.citations.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {vAnswer.citations.map((c, i) => (
+                          <span
+                            key={i}
+                            title={c.text.slice(0, 120)}
+                            className="font-mono text-xs text-primary border border-border rounded px-1.5 py-0.5"
+                          >
+                            [{c.file_name}]
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
