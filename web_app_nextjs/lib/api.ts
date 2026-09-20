@@ -4,8 +4,13 @@ const BACKEND_URL =
     : process.env.INTERNAL_API_URL) ||
   "http://localhost:8001";
 const BACKEND_DISPLAY = BACKEND_URL || "the backend";
-const MAX_RETRIES = 3;
+const MAX_ATTEMPTS = 20;
 const REQUEST_TIMEOUT_MS = 10000;
+// Retry transient failures (network error, abort, 5xx) until this much time has
+// elapsed rather than a fixed attempt count — long enough to ride out a cold
+// backend start (~30-60s of lazy imports/schema init) without hanging forever
+// when the backend is truly down.
+const RETRY_BUDGET_MS = 60000;
 const UPLOAD_TIMEOUT_MS = 600_000; // 10 minutes for large file uploads
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
@@ -37,8 +42,11 @@ function getHeaders() {
 
 async function fetchJson(path: string, options: RequestInit = {}, _token?: string | null, timeoutMs = REQUEST_TIMEOUT_MS) {
   let res: Response | undefined;
+  const deadline = Date.now() + Math.min(timeoutMs, RETRY_BUDGET_MS);
+  let attempts = 0;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    attempts = attempt;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -56,8 +64,8 @@ async function fetchJson(path: string, options: RequestInit = {}, _token?: strin
       if (res.ok) break;
 
       // Retry on transient 5xx server errors, otherwise surface the HTTP failure immediately.
-      if (res.status >= 500 && attempt < MAX_RETRIES) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      if (res.status >= 500 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500 * attempt, 3000)));
         continue;
       }
 
@@ -65,13 +73,13 @@ async function fetchJson(path: string, options: RequestInit = {}, _token?: strin
     } catch (e) {
       clearTimeout(timeoutId);
       res = undefined;
-      if (attempt === MAX_RETRIES) break;
-      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      if (Date.now() >= deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(500 * attempt, 3000)));
     }
   }
 
   if (!res) {
-    throw new Error(`Backend is unreachable at ${BACKEND_DISPLAY} after ${MAX_RETRIES} attempts. Please start the API server.`);
+    throw new Error(`Backend is unreachable at ${BACKEND_DISPLAY} after ${attempts} attempts. Please start the API server.`);
   }
 
   if (!res.ok) {
@@ -248,7 +256,9 @@ export async function getDocumentChunks(token: string, filename: string) {
 }
 
 export async function getDocumentMetadata(token: string, filename: string) {
-  return fetchJson(`/api/documents/${encodeURIComponent(filename)}/metadata`, {}, token);
+  // 60s budget: on a cold backend this request can block behind the lazy
+  // rag_engine import / schema init while startup prewarm is still running.
+  return fetchJson(`/api/documents/${encodeURIComponent(filename)}/metadata`, {}, token, 60000);
 }
 
 export function getDocumentRawUrl(_token: string, filename: string): string {
