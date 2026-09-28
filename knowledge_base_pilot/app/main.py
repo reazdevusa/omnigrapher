@@ -487,8 +487,10 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    username = payload.username.strip().lower()
-    user = db.query(User).filter(func.lower(User.username) == username).first()
+    identifier = payload.username.strip().lower()
+    user = db.query(User).filter(
+        (func.lower(User.username) == identifier) | (func.lower(User.email) == identifier)
+    ).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
 
