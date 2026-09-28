@@ -8,15 +8,23 @@ from app.database import (
     pg_engine,
     sqlite_session_factory,
     pg_session_factory,
-    User,
-    Document,
-    Feedback,
-    Job,
-    WidgetConfig,
+    Base,
 )
 
-# Sync order matters for foreign keys: users first, then dependent tables.
-MODEL_ORDER = [User, Document, Feedback, Job, WidgetConfig]
+
+def _model_order():
+    """All mapped models in FK-safe order (parents before children)."""
+    table_to_model = {}
+    for mapper in Base.registry.mappers:
+        table_to_model[mapper.persist_selectable.name] = mapper.class_
+    return [
+        table_to_model[t.name]
+        for t in Base.metadata.sorted_tables
+        if t.name in table_to_model
+    ]
+
+
+MODEL_ORDER = _model_order()
 
 
 def _type_name(col):
@@ -81,6 +89,12 @@ def sync_table(sqlite_session, pg_session, model):
 
 def update_sequence(pg_session, table_name):
     try:
+        # Skip tables without a serial id column (e.g. chat_sessions uses text ids).
+        seq = pg_session.execute(
+            text("SELECT pg_get_serial_sequence(:t, 'id')"), {"t": table_name}
+        ).scalar()
+        if not seq:
+            return
         pg_session.execute(
             text(
                 f"SELECT setval(pg_get_serial_sequence('{table_name}', 'id'), "
