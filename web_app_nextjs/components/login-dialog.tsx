@@ -164,7 +164,13 @@ export function LoginDialog({ children }: { children?: React.ReactNode }) {
 
   const computeErrors = (): FormErrors => {
     const next: FormErrors = {};
-    next.username = validateUsername(username);
+    // Sign-in accepts username OR email — strict username-format rules only
+    // apply when registering a new account.
+    next.username = isRegister
+      ? validateUsername(username)
+      : !username.trim()
+        ? "Username or email is required"
+        : undefined;
     if (isRegister) {
       next.email = validateEmail(email);
       next.phone = validatePhone(phone, phoneCountry);
@@ -275,12 +281,12 @@ export function LoginDialog({ children }: { children?: React.ReactNode }) {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium">Username</label>
+            <label className="text-sm font-medium">{isRegister ? "Username" : "Username or email"}</label>
             <Input
               value={username}
               onChange={(e) => { setUsername(e.target.value); touch("username"); }}
               onBlur={() => blur("username")}
-              placeholder="Enter your username"
+              placeholder={isRegister ? "Enter your username" : "Enter your username or email"}
               autoComplete="username"
               className={touched.username ? (errors.username ? "border-red-500" : usernameStatus === "available" ? "border-green-600" : "") : ""}
             />
