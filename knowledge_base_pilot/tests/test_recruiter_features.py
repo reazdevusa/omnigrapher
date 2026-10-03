@@ -777,5 +777,44 @@ class TestShowcaseHistory(unittest.TestCase):
         self.assertIn("switch_ms", hist[0]["summary"])
 
 
+class TestGatewayStatusEndpoint(unittest.TestCase):
+    """GET /api/showcase/gateway/status — proxies ai-gateway /health, never 500s."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+        self.auth_user = SimpleNamespace(id=42, role="admin", api_keys={})
+        app.dependency_overrides[get_current_user] = lambda: self.auth_user
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
+
+    def test_gateway_status_reachable(self):
+        fake = mock.Mock()
+        fake.raise_for_status = mock.Mock()
+        fake.json.return_value = {
+            "status": "ok",
+            "providers": {"peft-engine": {"status": "HEALTHY"}, "ollama": {"status": "HEALTHY"}},
+            "cache": {"enabled": True, "hits": 4, "misses": 6, "hit_rate": 0.4},
+            "metrics": {"requests_total": 10},
+            "routes": ["omnigrapher-core", "*"],
+        }
+        with mock.patch("requests.get", return_value=fake):
+            r = self.client.get("/api/showcase/gateway/status")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["reachable"])
+        self.assertEqual(data["providers"]["peft-engine"]["status"], "HEALTHY")
+        self.assertEqual(data["cache"]["hits"], 4)
+
+    def test_gateway_status_unreachable_returns_200(self):
+        import requests as real_requests
+        with mock.patch("requests.get", side_effect=real_requests.ConnectionError("refused")):
+            r = self.client.get("/api/showcase/gateway/status")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertFalse(data["reachable"])
+        self.assertIn("error", data)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -460,6 +460,34 @@ export async function getShowcaseHistoryItem(token: string, id: number): Promise
   return fetchJson(`/api/showcase/history/${id}`, {}, token);
 }
 
+export interface GatewayProviderStatus {
+  status: "HEALTHY" | "DEGRADED" | "UNHEALTHY";
+  consecutive_failures: number;
+}
+
+export interface GatewayStatus {
+  reachable: boolean;
+  gateway_url?: string;
+  error?: string;
+  status?: string;
+  providers?: Record<string, GatewayProviderStatus | string>;
+  cache?: { enabled?: boolean; hits?: number; misses?: number; hit_rate?: number };
+  metrics?: {
+    requests_total?: number;
+    served_total?: number;
+    fallbacks_total?: number;
+    redactions_total?: number;
+    blocked_injections?: number;
+    rate_limited_total?: number;
+    uptime_s?: number;
+  };
+  routes?: string[];
+}
+
+export async function getGatewayStatus(token: string): Promise<GatewayStatus> {
+  return fetchJson(`/api/showcase/gateway/status`, {}, token);
+}
+
 export async function deleteShowcaseHistoryItem(token: string, id: number): Promise<{ status: string; id: number }> {
   return fetchJson(`/api/showcase/history/${id}`, { method: "DELETE" }, token);
 }

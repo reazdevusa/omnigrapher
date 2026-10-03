@@ -15,7 +15,9 @@ import {
   Loader2,
   MessageSquare,
   Mic,
+  Network,
   ScanEye,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Upload,
@@ -719,6 +721,7 @@ function MLEngineTab({ onSaved }: { onSaved?: () => void }) {
   const [switching, setSwitching] = React.useState(false);
   const [switchLog, setSwitchLog] = React.useState<Array<{ adapter: string; switch_ms: number; warmed: boolean; ts: number }>>([]);
   const [bench, setBench] = React.useState<api.EdgeBenchmark | null>(null);
+  const [gw, setGw] = React.useState<api.GatewayStatus | null>(null);
   const [benchBusy, setBenchBusy] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
@@ -734,6 +737,16 @@ function MLEngineTab({ onSaved }: { onSaved?: () => void }) {
   }, [token, selected]);
 
   React.useEffect(() => { refresh(); }, [token]);
+  React.useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      if (!token) return;
+      try { const s = await api.getGatewayStatus(token); if (!cancelled) setGw(s); } catch {}
+    };
+    tick();
+    const iv = setInterval(tick, 5000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [token]);
   React.useEffect(() => {
     const id = setInterval(async () => {
       if (!token) return;
@@ -861,6 +874,65 @@ function MLEngineTab({ onSaved }: { onSaved?: () => void }) {
                 </tbody>
               </table>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2"><Network className="h-4 w-4" /> AI Gateway</CardTitle>
+          <CardDescription>
+            Route status, circuit breaker health, and Redis cache telemetry — polled every 5s
+            {gw?.reachable === false && (
+              <Badge variant="destructive" className="ml-2">unreachable</Badge>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!gw ? (
+            <p className="text-sm text-muted-foreground">Loading gateway status…</p>
+          ) : gw.reachable === false ? (
+            <p className="text-sm text-muted-foreground">
+              Gateway offline at <span className="font-mono">{gw.gateway_url || "ai-gateway:8005"}</span>
+              {gw.error ? ` — ${gw.error}` : ""}. LLM calls will fail until it recovers.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Requests</p>
+                  <p className="text-xl font-semibold">{gw.metrics?.requests_total ?? 0}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Cache hit rate</p>
+                  <p className="text-xl font-semibold">{Math.round((gw.cache?.hit_rate ?? 0) * 100)}%</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Fallbacks</p>
+                  <p className="text-xl font-semibold">{gw.metrics?.fallbacks_total ?? 0}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">PII redactions</p>
+                  <p className="text-xl font-semibold">{gw.metrics?.redactions_total ?? 0}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Providers:</span>
+                {Object.entries(gw.providers || {}).map(([name, info]) => {
+                  const st = typeof info === "string" ? info : info.status;
+                  const variant = st === "HEALTHY" ? "default" : st === "DEGRADED" ? "secondary" : "destructive";
+                  return <Badge key={name} variant={variant as any}>{name}: {st}</Badge>;
+                })}
+              </div>
+
+              <p className="text-xs text-muted-foreground font-mono">
+                routes: {(gw.routes || []).join(" · ")}
+                {"  ·  "}{gw.cache?.hits ?? 0} hits / {gw.cache?.misses ?? 0} misses
+                {(gw.metrics?.blocked_injections ?? 0) > 0 && `  ·  ${gw.metrics?.blocked_injections} injections blocked`}
+                {(gw.metrics?.rate_limited_total ?? 0) > 0 && `  ·  ${gw.metrics?.rate_limited_total} rate-limited`}
+              </p>
+            </>
           )}
         </CardContent>
       </Card>

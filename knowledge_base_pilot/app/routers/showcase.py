@@ -584,3 +584,29 @@ def delete_history_item(
     db.delete(r)
     db.commit()
     return {"status": "deleted", "id": result_id}
+
+
+@router.get("/gateway/status")
+def gateway_status(user: User = Depends(get_current_user)):
+    """Aggregated AI Gateway telemetry for the showcase dashboard.
+
+    Proxies the gateway's /health + /v1/status so the frontend (which cannot
+    resolve the in-cluster `ai-gateway` hostname) gets route status, provider
+    circuit-breaker health, Redis cache stats, and request metrics.
+    """
+    import requests
+
+    gateway_url = os.getenv("AI_GATEWAY_URL", "http://ai-gateway:8005").rstrip("/")
+    try:
+        resp = requests.get(f"{gateway_url}/health", timeout=4.0)
+        resp.raise_for_status()
+        data = resp.json()
+        data["reachable"] = True
+        data["gateway_url"] = gateway_url
+        return data
+    except Exception as exc:
+        return {
+            "reachable": False,
+            "gateway_url": gateway_url,
+            "error": str(exc)[:200],
+        }
