@@ -205,7 +205,9 @@ services:
     container_name: knowledge-base-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Host port is configurable — use scripts/start.ps1 to auto-pick a
+      # free port when 3000 is taken by another project.
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
       - INTERNAL_API_URL=http://backend:8001
       - NEXT_PUBLIC_BACKEND_URL=http://localhost:8001
