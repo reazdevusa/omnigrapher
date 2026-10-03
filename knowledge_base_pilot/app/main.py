@@ -135,6 +135,9 @@ async def lifespan(app: FastAPI):
             # Pre-warm the heavy RAG module (llama_index/chromadb/onnxruntime)
             # so the first document/chat request doesn't pay the import cost.
             await loop.run_in_executor(None, _prewarm_rag)
+            # Pre-warm the Whisper model (GPU init + weights load ~10s) so the
+            # first transcription request doesn't block on model loading.
+            threading.Thread(target=_warmup_whisper, daemon=True).start()
         except Exception:
             logger.exception("Background startup initialization failed")
 
@@ -356,6 +359,17 @@ def _prewarm_rag():
         logger.info("RAG engine prewarmed")
     except Exception:
         logger.warning("RAG prewarm failed (will retry on first request)", exc_info=True)
+
+
+def _warmup_whisper():
+    """Load the faster-whisper model in the background so the first transcription
+    request doesn't pay the ~10-15s model init (GPU context + weights)."""
+    try:
+        from app.services.transcription_service import get_whisper_model
+        get_whisper_model()
+        logger.info("Whisper model prewarmed")
+    except Exception:
+        logger.warning("Whisper prewarm failed (will retry on first request)", exc_info=True)
 
 
 def _check_ollama():

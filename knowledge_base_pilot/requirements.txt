@@ -49,5 +49,8 @@ kuzu
 
 # Live AI Showcase: speech, media ingestion, ONNX graph building (all lazy-imported)
 faster-whisper
+# CUDA 12 runtime libs for ctranslate2 GPU inference (Linux containers only)
+nvidia-cublas-cu12 ; sys_platform == "linux"
+nvidia-cudnn-cu12==9.* ; sys_platform == "linux"
 yt-dlp
 onnx

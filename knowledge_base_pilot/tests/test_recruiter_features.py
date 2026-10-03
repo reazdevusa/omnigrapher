@@ -134,9 +134,10 @@ class TestMediaIngestion(unittest.TestCase):
         fake_mod = types.ModuleType("yt_dlp")
         fake_mod.YoutubeDL = _FakeYDL
 
-        # Produce the mp3 the post-processor would have created.
+        # Produce the file yt-dlp would have downloaded (native audio container,
+        # no mp3 transcode — faster-whisper decodes m4a/webm/opus via PyAV).
         media_svc._MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-        produced = media_svc._MEDIA_DIR / "Demo Talk-abc123.mp3"
+        produced = media_svc._MEDIA_DIR / "Demo Talk-abc123.m4a"
         produced.write_bytes(b"ID3-fake")
 
         try:
@@ -145,9 +146,11 @@ class TestMediaIngestion(unittest.TestCase):
 
             self.assertEqual(src.source_type, "url")
             self.assertEqual(src.local_path, produced)
-            # bestaudio-only format keeps bandwidth down (no hi-res video pull).
-            self.assertEqual(captured["opts"]["format"], "bestaudio/best")
+            # bestaudio-only format keeps bandwidth down (no hi-res video pull);
+            # m4a/webm preferred since faster-whisper decodes them natively.
+            self.assertIn("bestaudio", captured["opts"]["format"])
             self.assertTrue(captured["opts"]["noplaylist"])
+            self.assertTrue(captured["opts"]["continuedl"])
             self.assertEqual(captured["url"], "https://youtube.com/watch?v=abc123")
         finally:
             produced.unlink(missing_ok=True)

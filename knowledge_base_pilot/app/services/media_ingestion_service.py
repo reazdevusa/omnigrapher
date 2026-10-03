@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-MEDIA_EXTENSIONS = {".mp3", ".mp4", ".wav", ".m4a"}
+MEDIA_EXTENSIONS = {".mp3", ".mp4", ".wav", ".m4a", ".webm", ".opus", ".ogg", ".flac", ".aac", ".mkv", ".mov"}
 _MEDIA_DIR = Path(os.getenv("MEDIA_CACHE_DIR", tempfile.gettempdir())) / "omnigrapher_media"
 
 
@@ -56,6 +56,11 @@ def resolve_media_source(source: str) -> MediaSource:
     )
 
 
+def _has_aria2c() -> bool:
+    from shutil import which
+    return which("aria2c") is not None
+
+
 def _download_remote_audio(url: str) -> MediaSource:
     try:
         import yt_dlp
@@ -64,28 +69,43 @@ def _download_remote_audio(url: str) -> MediaSource:
 
     out_tmpl = str(_MEDIA_DIR / "%(title).80s-%(id)s.%(ext)s")
     opts = {
-        "format": "bestaudio/best",
+        # Prefer pre-muxed audio-only streams (m4a/webm/opus). faster-whisper
+        # decodes them natively via PyAV — skipping the mp3 transcode removes a
+        # full ffmpeg pass from the critical path.
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "outtmpl": out_tmpl,
         "quiet": True,
         "noplaylist": True,
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "128",
-        }],
+        # tv/ios clients serve formats without the n-challenge/signature
+        # deciphering round-trip the default web client needs — shaves
+        # several seconds off extraction for YouTube URLs.
+        "extractor_args": {"youtube": {"player_client": ["tv", "ios", "default"]}},
+        "socket_timeout": 20,
+        # googlevideo throttles each connection hard (~50-100KB/s). aria2c
+        # splits the file into parallel range requests, and resume/retries
+        # recover from mid-stream timeouts instead of erroring out.
+        "retries": 5,
+        "file_access_retries": 5,
+        "continuedl": True,
     }
+    if _has_aria2c():
+        opts["external_downloader"] = "aria2c"
+        opts["external_downloader_args"] = {
+            "aria2c": ["-x", "16", "-k", "1M", "--summary-interval=0",
+                       "--console-log-level=warn", "--file-allocation=none"]
+        }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         title = info.get("title") or "remote-media"
         vid = info.get("id") or "media"
-        ext = info.get("ext") or "mp3"
-    # After the FFmpeg post-processor the extension is the preferred codec.
-    candidate = _MEDIA_DIR / f"{title:.80}-{vid}.mp3"
-    if not candidate.exists():
-        matches = sorted(_MEDIA_DIR.glob(f"*-{vid}.*"), key=lambda p: p.stat().st_mtime)
-        if not matches:
-            raise FileNotFoundError(f"yt-dlp did not produce an audio file for {url}")
-        candidate = matches[-1]
+        ext = info.get("ext") or "m4a"
+    matches = sorted(
+        (p for p in _MEDIA_DIR.glob(f"*-{vid}.*") if p.suffix != ".part"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    if not matches:
+        raise FileNotFoundError(f"yt-dlp did not produce an audio file for {url}")
+    candidate = matches[-1]
     return MediaSource(
         local_path=candidate,
         display_name=f"{title}.{ext}",

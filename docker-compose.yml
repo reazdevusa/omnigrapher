@@ -140,6 +140,10 @@ services:
       # OpenAI /v1/* and Ollama-native /api/* passthrough endpoints.
       - OLLAMA_BASE_URL=http://ai-gateway:8005
       - PEFT_ENGINE_URL=http://ai-gateway:8005
+      # GPU transcription on the RTX 3060 (falls back to CPU int8 at runtime
+      # if CUDA is unavailable). ~10-20x realtime vs ~0.5x on CPU.
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
       - LLM_MODEL=llama3.2:latest
       - EMBED_MODEL=nomic-embed-text:latest
       - VLM_MODEL=llava:latest
@@ -161,6 +165,16 @@ services:
       - ./knowledge_base_pilot:/app
       - .:/workspace:ro
       - aeo_data:/data/aeo
+      # Persist HuggingFace model cache across rebuilds/recreates —
+      # re-downloading the Whisper model (~150MB) on every recreate is slow.
+      - hf_models:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     # No --reload: watchfiles cannot watch Windows bind mounts via Docker
     # Desktop (os error 5), which restart-loops the server and fails healthchecks.
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
@@ -185,10 +199,13 @@ services:
       - GRAPH_RAG_ENABLED=false
       - PYTHONPATH=/workspace
       - AEO_DATABASE_URL=sqlite:////data/aeo/aeo_studio.db
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
     volumes:
       - ./knowledge_base_pilot:/app
       - .:/workspace:ro
       - aeo_data:/data/aeo
+      - hf_models:/root/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -223,3 +240,4 @@ volumes:
   chroma_data:
   redis_data:
   aeo_data:
+  hf_models:
