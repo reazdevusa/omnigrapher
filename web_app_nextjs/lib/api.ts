@@ -488,6 +488,58 @@ export async function getGatewayStatus(token: string): Promise<GatewayStatus> {
   return fetchJson(`/api/showcase/gateway/status`, {}, token);
 }
 
+export interface SelfRAGSource {
+  source: string | null;
+  page: number | null;
+  score: number | null;
+  preview: string;
+}
+
+export interface SelfRAGResponse {
+  answer: string;
+  faithfulness_score: number;
+  threshold: number;
+  grounded: boolean;
+  correction_attempts: number;
+  query_rewritten: boolean;
+  final_query: string;
+  critique: { score: number; unsupported: string[]; missing: string[]; rewrite: string | null };
+  sources: SelfRAGSource[];
+  model: string;
+  memory: { session_id: string | null; backend: string; history_messages: number };
+  elapsed_ms: number;
+}
+
+export async function runSelfRag(token: string, question: string, sessionId?: string): Promise<SelfRAGResponse> {
+  return fetchJson(`/api/showcase/self-rag`, {
+    method: "POST",
+    body: JSON.stringify({ question, session_id: sessionId, top_k: 5 }),
+  }, token);
+}
+
+export interface SemanticChunk {
+  index: number;
+  text: string;
+  char_count: number;
+  sentences: number;
+  boundary_after: "distance" | "size" | "end";
+}
+
+export async function semanticChunk(token: string, text: string, threshold?: number): Promise<{ chunks: SemanticChunk[]; count: number; threshold: number }> {
+  return fetchJson(`/api/showcase/semantic-chunk`, {
+    method: "POST",
+    body: JSON.stringify(threshold == null ? { text } : { text, threshold }),
+  }, token);
+}
+
+export async function getConversationMemory(token: string, sessionId: string): Promise<{ session_id: string; backend: string; messages: Array<{ role: string; content: string; ts: number }> }> {
+  return fetchJson(`/api/showcase/memory/${encodeURIComponent(sessionId)}`, {}, token);
+}
+
+export async function clearConversationMemory(token: string, sessionId: string): Promise<{ cleared: boolean }> {
+  return fetchJson(`/api/showcase/memory/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, token);
+}
+
 export async function deleteShowcaseHistoryItem(token: string, id: number): Promise<{ status: string; id: number }> {
   return fetchJson(`/api/showcase/history/${id}`, { method: "DELETE" }, token);
 }

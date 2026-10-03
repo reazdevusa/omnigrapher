@@ -120,6 +120,17 @@ class AdapterSwitchRequest(BaseModel):
     adapter: str
 
 
+class SelfRAGRequest(BaseModel):
+    question: str
+    session_id: Optional[str] = None   # enables Redis-backed conversation memory
+    top_k: int = Field(default=5, ge=1, le=15)
+
+
+class SemanticChunkRequest(BaseModel):
+    text: str
+    threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+
 def _save_result(db: Session, owner_id: int, kind: str, title: str, source_ref: str, payload: dict) -> None:
     """Persist a showcase result for the history panel. Best-effort — never
     lets a DB hiccup break the user-facing feature."""
@@ -261,8 +272,11 @@ def _generate_answer(question: str, context_chunks: List[str], instruction: str)
     from app.providers.registry import get_model_info
 
     model = os.getenv("LLM_MODEL", "llama3.2:latest")
-    info = get_model_info(model)
-    provider = get_provider(info.provider if info else "ollama")
+    try:
+        provider_name = get_model_info(model).provider
+    except ValueError:
+        provider_name = "ollama"  # unregistered local model alias (e.g. llama3.2:latest)
+    provider = get_provider(provider_name)
     context = "\n\n".join(context_chunks)[:12000]
     prompt = f"{instruction}\n\nCONTEXT:\n{context}\n\nQUESTION: {question}\n\nANSWER:"
     resp = provider.generate(
@@ -362,8 +376,11 @@ def summarize_transcript(
     from app.providers.registry import get_model_info
 
     model = os.getenv("LLM_MODEL", "llama3.2:latest")
-    info = get_model_info(model)
-    provider = get_provider(info.provider if info else "ollama")
+    try:
+        provider_name = get_model_info(model).provider
+    except ValueError:
+        provider_name = "ollama"  # unregistered local model alias (e.g. llama3.2:latest)
+    provider = get_provider(provider_name)
     prompt = (
         "Summarize this transcript. Keep timestamp markers like [04:15] next to the "
         "points they refer to.\n\nTRANSCRIPT:\n" + payload.transcript[:12000]
@@ -610,3 +627,86 @@ def gateway_status(user: User = Depends(get_current_user)):
             "gateway_url": gateway_url,
             "error": str(exc)[:200],
         }
+
+
+# ---------------------------------------------------------------------------
+# Self-RAG, semantic chunking, and persistent conversation memory
+# ---------------------------------------------------------------------------
+
+@router.post("/self-rag")
+def self_rag_query(
+    payload: SelfRAGRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-corrective RAG: retrieve -> draft -> reflect -> conditional
+    rewrite & re-retrieve. Returns the answer plus faithfulness telemetry."""
+    from app.services.self_rag import run_self_rag
+
+    session_id = payload.session_id or f"selfrag-{user.id}"
+    result = run_self_rag(
+        question=payload.question,
+        owner_id=user.id,
+        session_id=session_id,
+        top_k=payload.top_k,
+        user_role=getattr(user, "role", None),
+    )
+    _save_result(
+        db, user.id, "self_rag", payload.question[:120], session_id,
+        {
+            "question": payload.question,
+            "answer": result["answer"],
+            "faithfulness_score": result["faithfulness_score"],
+            "grounded": result["grounded"],
+            "correction_attempts": result["correction_attempts"],
+            "query_rewritten": result["query_rewritten"],
+            "sources": result["sources"],
+        },
+    )
+    return result
+
+
+@router.post("/semantic-chunk")
+def semantic_chunk_demo(
+    payload: SemanticChunkRequest,
+    user: User = Depends(get_current_user),
+):
+    """Split text at embedding-distance boundaries — returns chunk list with
+    the reason each boundary was chosen (distance/size/end)."""
+    from app.services.semantic_chunker import DEFAULT_THRESHOLD, semantic_chunk
+
+    if not payload.text.strip():
+        raise HTTPException(status_code=422, detail="text must not be empty")
+    chunks = semantic_chunk(
+        payload.text,
+        threshold=payload.threshold if payload.threshold is not None else DEFAULT_THRESHOLD,
+    )
+    return {
+        "chunks": chunks,
+        "count": len(chunks),
+        "threshold": payload.threshold if payload.threshold is not None else DEFAULT_THRESHOLD,
+    }
+
+
+@router.get("/memory/{session_id}")
+def get_conversation_memory(
+    session_id: str,
+    user: User = Depends(get_current_user),
+):
+    from app.services.conversation_memory import memory
+
+    return {
+        "session_id": session_id,
+        "backend": memory.backend,
+        "messages": memory.get_history(session_id),
+    }
+
+
+@router.delete("/memory/{session_id}")
+def clear_conversation_memory(
+    session_id: str,
+    user: User = Depends(get_current_user),
+):
+    from app.services.conversation_memory import memory
+
+    return {"session_id": session_id, "cleared": memory.clear(session_id)}

@@ -100,6 +100,7 @@ const KIND_META: Record<string, { icon: any; label: string; tab: string }> = {
   transcript: { icon: Mic, label: "Speech & Video QA", tab: "speech" },
   visual: { icon: ScanEye, label: "Computer Vision", tab: "vision" },
   adapter_switch: { icon: BrainCircuit, label: "Adapter switch", tab: "ml" },
+  self_rag: { icon: Sparkles, label: "Self-RAG query", tab: "ml" },
 };
 
 function historySummaryText(item: api.ShowcaseHistoryItem): string {
@@ -113,6 +114,10 @@ function historySummaryText(item: api.ShowcaseHistoryItem): string {
   }
   if (item.kind === "adapter_switch") {
     return s.switch_ms != null ? `${Number(s.switch_ms).toFixed(2)} ms` : "";
+  }
+  if (item.kind === "self_rag") {
+    const pct = s.faithfulness_score != null ? `${Math.round(Number(s.faithfulness_score) * 100)}%` : "n/a";
+    return `faithfulness ${pct} · ${s.correction_attempts ?? 1} attempt(s)`;
   }
   return "";
 }
@@ -713,7 +718,7 @@ function VisionTab({
 // Tab 3 — ML Engine & Edge Telemetry
 // ---------------------------------------------------------------------------
 
-function MLEngineTab({ onSaved }: { onSaved?: () => void }) {
+function MLEngineTab({ onSaved, inject }: { onSaved?: () => void; inject?: { id: number; payload: any } | null }) {
   const { token } = useAuth();
   const [adapters, setAdapters] = React.useState<api.MLAdaptersResponse | null>(null);
   const [gpu, setGpu] = React.useState<api.GPUSStatus | null>(null);
@@ -722,6 +727,29 @@ function MLEngineTab({ onSaved }: { onSaved?: () => void }) {
   const [switchLog, setSwitchLog] = React.useState<Array<{ adapter: string; switch_ms: number; warmed: boolean; ts: number }>>([]);
   const [bench, setBench] = React.useState<api.EdgeBenchmark | null>(null);
   const [gw, setGw] = React.useState<api.GatewayStatus | null>(null);
+  const [ragQ, setRagQ] = React.useState("");
+  const [ragBusy, setRagBusy] = React.useState(false);
+  const [ragResult, setRagResult] = React.useState<api.SelfRAGResponse | null>(null);
+
+  React.useEffect(() => {
+    if (!inject) return;
+    const p = inject.payload || {};
+    setRagQ(p.question || "");
+    setRagResult({
+      answer: p.answer || "",
+      faithfulness_score: p.faithfulness_score ?? 0,
+      threshold: p.threshold ?? 0.7,
+      grounded: !!p.grounded,
+      correction_attempts: p.correction_attempts ?? 1,
+      query_rewritten: !!p.query_rewritten,
+      final_query: p.final_query || "",
+      critique: p.critique || { score: p.faithfulness_score ?? 0, unsupported: [], missing: [], rewrite: null },
+      sources: p.sources || [],
+      model: p.model || "",
+      memory: p.memory || { session_id: null, backend: "", history_messages: 0 },
+      elapsed_ms: p.elapsed_ms ?? 0,
+    });
+  }, [inject]);
   const [benchBusy, setBenchBusy] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
@@ -780,6 +808,20 @@ function MLEngineTab({ onSaved }: { onSaved?: () => void }) {
       toast.error(e.message || "Benchmark failed");
     } finally {
       setBenchBusy(false);
+    }
+  };
+
+  const runRag = async () => {
+    if (!token || !ragQ.trim()) return;
+    setRagBusy(true);
+    try {
+      const r = await api.runSelfRag(token, ragQ.trim());
+      setRagResult(r);
+      onSaved?.();
+    } catch (e: any) {
+      toast.error(e?.message || "Self-RAG query failed");
+    } finally {
+      setRagBusy(false);
     }
   };
 
@@ -939,6 +981,72 @@ function MLEngineTab({ onSaved }: { onSaved?: () => void }) {
 
       <Card className="lg:col-span-2">
         <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2"><Sparkles className="h-4 w-4" /> Self-Corrective RAG</CardTitle>
+          <CardDescription>
+            Draft → reflect → rewrite loop over your indexed documents, with Redis-backed multi-turn memory
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              value={ragQ}
+              onChange={(e) => setRagQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") runRag(); }}
+              placeholder="Ask a question about your indexed documents…"
+              disabled={ragBusy}
+            />
+            <Button onClick={runRag} disabled={ragBusy || !ragQ.trim()}>
+              {ragBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              Ask
+            </Button>
+          </div>
+
+          {ragResult && (
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                  <span>Faithfulness score</span>
+                  <span className="font-mono">{Math.round(ragResult.faithfulness_score * 100)}%</span>
+                </div>
+                <Progress value={ragResult.faithfulness_score * 100} />
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <Badge variant={ragResult.grounded ? "default" : "destructive"}>
+                    {ragResult.grounded ? "grounded" : "low faithfulness"}
+                  </Badge>
+                  <Badge variant="secondary">{ragResult.correction_attempts} attempt(s)</Badge>
+                  {ragResult.query_rewritten && (
+                    <Badge variant="outline">query rewritten → {ragResult.final_query}</Badge>
+                  )}
+                  {ragResult.memory.backend && (
+                    <Badge variant="outline">memory: {ragResult.memory.backend} · {ragResult.memory.history_messages} msgs</Badge>
+                  )}
+                  <span className="text-xs text-muted-foreground">{ragResult.elapsed_ms} ms</span>
+                </div>
+              </div>
+              <div className="rounded-md border border-border bg-muted/30 p-3 text-sm whitespace-pre-wrap">
+                {ragResult.answer}
+              </div>
+              {ragResult.critique.unsupported.length > 0 && (
+                <p className="text-xs text-amber-600">
+                  Flagged claims: {ragResult.critique.unsupported.join(" · ")}
+                </p>
+              )}
+              {ragResult.sources.length > 0 && (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {ragResult.sources.map((s, i) => (
+                    <p key={i} className="truncate">
+                      [{i + 1}] {s.source}{s.page ? ` p.${s.page}` : ""}{s.score != null ? ` · ${Number(s.score).toFixed(3)}` : ""} — {s.preview}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2"><Gauge className="h-4 w-4" /> Edge ML micro-benchmark (ONNX Runtime)</CardTitle>
           <CardDescription>Runs a tiny conv net to measure realistic edge inference</CardDescription>
         </CardHeader>
@@ -983,6 +1091,7 @@ export function RecruiterMLShowcase() {
   const [historyKey, setHistoryKey] = React.useState(0);
   const [injectSpeech, setInjectSpeech] = React.useState<{ id: number; payload: api.TranscriptResponse } | null>(null);
   const [injectVision, setInjectVision] = React.useState<{ id: number; payload: api.VisionAnalyzeResponse } | null>(null);
+  const [injectML, setInjectML] = React.useState<{ id: number; payload: any } | null>(null);
 
   const openHistoryItem = (kind: string, detail: api.ShowcaseHistoryDetail) => {
     if (kind === "transcript") {
@@ -991,6 +1100,9 @@ export function RecruiterMLShowcase() {
     } else if (kind === "visual") {
       setInjectVision({ id: detail.id, payload: detail.payload });
       setTab("vision");
+    } else if (kind === "self_rag") {
+      setInjectML({ id: detail.id, payload: detail.payload });
+      setTab("ml");
     } else {
       setTab("ml");
       toast.info(`Adapter "${detail.payload?.adapter ?? detail.title}" was switched in ${Number(detail.payload?.switch_ms ?? 0).toFixed(2)} ms`);
@@ -1028,7 +1140,7 @@ export function RecruiterMLShowcase() {
             </TabsList>
             <TabsContent value="speech" className="mt-4"><SpeechTab inject={injectSpeech} onSaved={refreshHistory} /></TabsContent>
             <TabsContent value="vision" className="mt-4"><VisionTab inject={injectVision} onSaved={refreshHistory} /></TabsContent>
-            <TabsContent value="ml" className="mt-4"><MLEngineTab onSaved={refreshHistory} /></TabsContent>
+            <TabsContent value="ml" className="mt-4"><MLEngineTab onSaved={refreshHistory} inject={injectML} /></TabsContent>
           </Tabs>
 
           <Card className="bg-muted/30">

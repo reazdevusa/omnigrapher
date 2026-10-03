@@ -816,5 +816,263 @@ class TestGatewayStatusEndpoint(unittest.TestCase):
         self.assertIn("error", data)
 
 
+# ---------------------------------------------------------------------------
+# Advanced RAG: conversation memory, semantic chunker, Self-RAG loop
+# ---------------------------------------------------------------------------
+
+class _FakeRedis:
+    """Minimal in-memory stand-in for the redis-py client surface we use."""
+
+    def __init__(self):
+        self.store = {}
+
+    def ping(self):
+        return True
+
+    def lrange(self, key, start, end):
+        lst = self.store.get(key, [])
+        end = len(lst) if end == -1 else end + 1
+        return lst[start:] if start < 0 else lst[start:end]
+
+    def delete(self, key):
+        return 1 if self.store.pop(key, None) is not None else 0
+
+    def pipeline(self):
+        outer = self
+
+        class _Pipe:
+            ops = []
+
+            def rpush(self, k, v): self.ops.append(("rpush", k, v)); return self
+            def ltrim(self, k, a, b): self.ops.append(("ltrim", k, a, b)); return self
+            def expire(self, k, t): self.ops.append(("expire", k, t)); return self
+
+            def execute(self):
+                for op in self.ops:
+                    if op[0] == "rpush":
+                        outer.store.setdefault(op[1], []).append(op[2])
+                    elif op[0] == "ltrim":
+                        _, k, a, b = op
+                        lst = outer.store.get(k, [])
+                        outer.store[k] = lst[a:] if a < 0 else lst[a:b + 1 if b != -1 else None]
+                self.ops = []
+                return []
+
+        return _Pipe()
+
+
+class TestConversationMemory(unittest.TestCase):
+    def setUp(self):
+        from app.services.conversation_memory import ConversationMemory
+        self.mem = ConversationMemory(redis_client=_FakeRedis(), ttl_s=60, max_messages=4)
+
+    def test_append_and_read(self):
+        self.mem.append("s1", "user", "hello")
+        self.mem.append("s1", "assistant", "hi there")
+        hist = self.mem.get_history("s1")
+        self.assertEqual([m["role"] for m in hist], ["user", "assistant"])
+        self.assertEqual(hist[1]["content"], "hi there")
+        self.assertEqual(self.mem.backend, "redis")
+
+    def test_ring_buffer_trims(self):
+        for i in range(6):
+            self.mem.append("s2", "user", f"msg {i}")
+        hist = self.mem.get_history("s2")
+        self.assertEqual(len(hist), 4)
+        self.assertEqual(hist[0]["content"], "msg 2")
+
+    def test_clear(self):
+        self.mem.append("s3", "user", "x")
+        self.assertTrue(self.mem.clear("s3"))
+        self.assertEqual(self.mem.get_history("s3"), [])
+
+    def test_fallback_when_redis_down(self):
+        from app.services.conversation_memory import ConversationMemory
+        # dead port — the real lazy-connect path must degrade to in-process
+        mem = ConversationMemory(redis_url="redis://127.0.0.1:6399/9")
+        mem.append("s4", "user", "offline")
+        self.assertEqual(mem.backend, "memory")
+        self.assertEqual(mem.get_history("s4")[0]["content"], "offline")
+
+
+class TestSemanticChunker(unittest.TestCase):
+    def _embedder(self, mapping):
+        def embed(texts):
+            return [mapping[t] for t in texts]
+        return embed
+
+    def test_splits_on_semantic_boundary(self):
+        from app.services.semantic_chunker import semantic_chunk
+        # two sentences on one topic, then a topic change, then same again
+        s1 = "Cats are small animals."
+        s2 = "Cats sleep a lot."
+        s3 = "Quantum mechanics describes subatomic particles."
+        s4 = "Cats like warm spots."
+        vecs = {
+            s1: [1.0, 0.0], s2: [0.99, 0.01],
+            s3: [0.0, 1.0],
+            s4: [1.0, 0.0],
+        }
+        chunks = semantic_chunk(f"{s1} {s2} {s3} {s4}", threshold=0.3,
+                                embedder=self._embedder(vecs))
+        texts = [c["text"] for c in chunks]
+        self.assertEqual(len(chunks), 3)
+        self.assertIn(s1, texts[0] + texts[0])
+        self.assertIn(s3, texts[1])
+        self.assertEqual(chunks[0]["boundary_after"], "distance")
+        self.assertEqual(chunks[-1]["boundary_after"], "end")
+
+    def test_single_sentence_single_chunk(self):
+        from app.services.semantic_chunker import semantic_chunk
+        chunks = semantic_chunk("Just one sentence.", embedder=lambda t: [[1.0]] * len(t))
+        self.assertEqual(len(chunks), 1)
+
+    def test_embedder_failure_falls_back(self):
+        from app.services.semantic_chunker import semantic_chunk
+        text = ". ".join(f"Sentence number {i}" for i in range(40)) + "."
+        chunks = semantic_chunk(text, max_chars=120,
+                                embedder=lambda t: (_ for _ in ()).throw(RuntimeError("no embed")))
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(c["char_count"] <= 120 + 50 for c in chunks))
+
+
+class TestSelfRAG(unittest.TestCase):
+    """Self-corrective loop with injected retriever/completer — no network."""
+
+    def _passages(self):
+        return [{"source": "doc.pdf", "page": 3, "score": 0.9,
+                 "text": "The adapter switch takes 4ms."}]
+
+    def _retriever(self, calls):
+        def r(query, owner_id, top_k, user_role=None):
+            calls.append(query)
+            return self._passages()
+        return r
+
+    def _completer(self, critique_json, draft="The answer is 4ms."):
+        def c(messages, model, temperature=0.2, max_tokens=600):
+            content = messages[-1]["content"]
+            if "fact-checker" in content:
+                return critique_json
+            return draft
+        return c
+
+    def test_grounded_single_pass(self):
+        from app.services.self_rag import run_self_rag
+        calls = []
+        res = run_self_rag(
+            "How fast is the switch?", owner_id=1, session_id=None,
+            retriever=self._retriever(calls),
+            completer=self._completer('{"score": 0.95, "unsupported": [], "missing": [], "rewrite": null}'),
+        )
+        self.assertTrue(res["grounded"])
+        self.assertEqual(res["correction_attempts"], 1)
+        self.assertFalse(res["query_rewritten"])
+        self.assertEqual(calls, ["How fast is the switch?"])
+
+    def test_low_score_triggers_rewrite_and_reretrieval(self):
+        from app.services.self_rag import run_self_rag
+        calls = []
+        critiques = iter([
+            '{"score": 0.3, "unsupported": ["4ms"], "missing": ["latency"], "rewrite": "adapter latency benchmark"}',
+            '{"score": 0.9, "unsupported": [], "missing": [], "rewrite": null}',
+        ])
+
+        def completer(messages, model, temperature=0.2, max_tokens=600):
+            if "fact-checker" in messages[-1]["content"]:
+                return next(critiques)
+            return "draft"
+
+        res = run_self_rag(
+            "switch speed?", owner_id=1, session_id=None,
+            retriever=self._retriever(calls), completer=completer,
+        )
+        self.assertEqual(res["correction_attempts"], 2)
+        self.assertTrue(res["query_rewritten"])
+        self.assertEqual(res["final_query"], "adapter latency benchmark")
+        self.assertEqual(calls[1], "adapter latency benchmark")
+        self.assertGreaterEqual(res["faithfulness_score"], 0.9)
+
+    def test_unparseable_critique_accepts_draft(self):
+        from app.services.self_rag import run_self_rag
+        res = run_self_rag(
+            "q?", owner_id=1, session_id=None,
+            retriever=self._retriever([]),
+            completer=self._completer("not json at all"),
+        )
+        self.assertEqual(res["faithfulness_score"], 0.8)
+        self.assertEqual(res["answer"], "The answer is 4ms.")
+
+    def test_no_passages_graceful(self):
+        from app.services.self_rag import run_self_rag
+        res = run_self_rag(
+            "q?", owner_id=1, session_id=None, max_refinements=0,
+            retriever=lambda *a, **k: [],
+            completer=self._completer("{}"),
+        )
+        self.assertIn("couldn't find", res["answer"])
+        self.assertFalse(res["grounded"])
+
+    def test_memory_records_exchange(self):
+        from app.services.self_rag import run_self_rag
+        from app.services.conversation_memory import memory
+        sid = "selfrag-test-mem"
+        memory.clear(sid)
+        run_self_rag(
+            "switch speed?", owner_id=1, session_id=sid,
+            retriever=self._retriever([]),
+            completer=self._completer('{"score": 0.9, "rewrite": null}'),
+        )
+        hist = memory.get_history(sid)
+        self.assertEqual(len(hist), 2)
+        self.assertEqual(hist[0]["role"], "user")
+        memory.clear(sid)
+
+
+class TestAdvancedRAGEndpoints(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+        self.auth_user = SimpleNamespace(id=42, role="admin", api_keys={})
+        app.dependency_overrides[get_current_user] = lambda: self.auth_user
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
+
+    def test_self_rag_endpoint_persists_result(self):
+        canned = {
+            "answer": "4ms.", "faithfulness_score": 0.9, "threshold": 0.7,
+            "grounded": True, "correction_attempts": 1, "query_rewritten": False,
+            "final_query": "q", "critique": {"score": 0.9}, "sources": [],
+            "model": "m", "memory": {"session_id": "s", "backend": "memory",
+                                     "history_messages": 0},
+            "elapsed_ms": 12.0,
+        }
+        with mock.patch("app.services.self_rag.run_self_rag", return_value=canned):
+            r = self.client.post("/api/showcase/self-rag", json={"question": "speed?"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["faithfulness_score"], 0.9)
+        hist = self.client.get("/api/showcase/history?kind=self_rag").json()["items"]
+        self.assertTrue(any(i["title"] == "speed?" for i in hist))
+
+    def test_semantic_chunk_endpoint(self):
+        fake_chunks = [{"index": 0, "text": "a b", "char_count": 3,
+                        "sentences": 2, "boundary_after": "end"}]
+        with mock.patch("app.services.semantic_chunker.semantic_chunk",
+                        return_value=fake_chunks) as m:
+            r = self.client.post("/api/showcase/semantic-chunk",
+                                 json={"text": "a. b.", "threshold": 0.4})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["count"], 1)
+        self.assertEqual(m.call_args.kwargs.get("threshold", m.call_args[1].get("threshold")), 0.4)
+
+    def test_memory_endpoints(self):
+        r = self.client.get("/api/showcase/memory/demo-sess")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["session_id"], "demo-sess")
+        r = self.client.delete("/api/showcase/memory/demo-sess")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("cleared", r.json())
+
+
 if __name__ == "__main__":
     unittest.main()
