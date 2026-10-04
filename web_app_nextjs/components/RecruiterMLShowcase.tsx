@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import {
   Activity,
   BrainCircuit,
+  Check,
+  Copy,
   Cpu,
   FileAudio,
   FileVideo,
@@ -255,6 +257,7 @@ function SpeechTab({
   const [jobStage, setJobStage] = React.useState("");
   const [jobStartedAt, setJobStartedAt] = React.useState<number | null>(null);
   const [jobElapsed, setJobElapsed] = React.useState(0);
+  const [copied, setCopied] = React.useState(false);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
   // Reload a persisted result when a history item is selected
@@ -363,6 +366,18 @@ function SpeechTab({
     }
   };
 
+  const copyTranscript = async () => {
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(result.text);
+      setCopied(true);
+      toast.success("Transcript copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy failed — clipboard unavailable");
+    }
+  };
+
   const seekTo = (seconds: number) => {
     if (videoRef.current) {
       videoRef.current.currentTime = seconds;
@@ -444,8 +459,23 @@ function SpeechTab({
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Transcript ({result.segments.length} segments)</CardTitle>
-              <CardDescription>Click a timestamp to seek the video player</CardDescription>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="text-sm">Transcript ({result.segments.length} segments)</CardTitle>
+                  <CardDescription>Click a timestamp to seek the video player</CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={copyTranscript}
+                  title="Copy full transcript"
+                  aria-label="Copy full transcript"
+                >
+                  {copied
+                    ? <Check className="h-4 w-4 text-green-500" />
+                    : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="max-h-72 overflow-y-auto space-y-1">
               {result.segments.map((s, i) => (

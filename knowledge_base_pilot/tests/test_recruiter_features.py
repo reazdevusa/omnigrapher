@@ -47,18 +47,20 @@ class _FakeWhisperModel:
 
     RESPONSES: dict = {}
     CALLS: list = []
+    KWARGS: list = []
 
     def __init__(self, name="base", *a, **k):
         self.name = name
 
     def transcribe(self, path, language=None, beam_size=5, vad_filter=True,
-                   task="transcribe"):
+                   task="transcribe", **kwargs):
         key = f"{self.name}:translate" if task == "translate" else self.name
         default = ("en", 1.0, " Hello and welcome to the demo.")
         lang, prob, text = self.RESPONSES.get(key, self.RESPONSES.get(self.name, default))
         if language:
             lang = language
         type(self).CALLS.append((self.name, task))
+        type(self).KWARGS.append(kwargs)
         if self.name in self.RESPONSES or key in self.RESPONSES:
             segments = [_FakeWhisperSegment(0.0, 2.5, f" {text}")]
         else:
@@ -186,6 +188,36 @@ class TestTranscriptionService(unittest.TestCase):
         self.assertEqual(ts_svc.format_timestamp(4 * 60 + 15), "04:15")
         self.assertEqual(ts_svc.format_timestamp(3600 + 61), "1:01:01")
         self.assertEqual(ts_svc.format_timestamp_ms(245.7), "04:05.700")
+
+    def test_anti_loop_decode_kwargs_are_passed(self):
+        with self._patch_whisper():
+            ts_svc.transcribe_audio("en.mp3")
+        self.assertTrue(_FakeWhisperModel.KWARGS)
+        for kw in _FakeWhisperModel.KWARGS:
+            self.assertFalse(kw.get("condition_on_previous_text", True))
+            self.assertEqual(kw.get("no_repeat_ngram_size"), 3)
+            self.assertEqual(kw.get("hallucination_silence_threshold"), 2.0)
+
+    def test_consecutive_duplicate_segments_are_collapsed(self):
+        """Whisper's residual hallucination loops emit the same phrase dozens
+        of times; the builder must collapse back-to-back identical segments."""
+        class _LoopyModel(_FakeWhisperModel):
+            def transcribe(self, path, **kw):
+                segs = [
+                    _FakeWhisperSegment(0.0, 4.0, "real intro text"),
+                    _FakeWhisperSegment(4.0, 8.0, "looped phrase"),
+                    _FakeWhisperSegment(8.0, 12.0, "looped phrase"),
+                    _FakeWhisperSegment(12.0, 16.0, "looped phrase"),
+                    _FakeWhisperSegment(16.0, 20.0, "different ending"),
+                ]
+                return iter(segs), _FakeWhisperInfo(language="en", probability=0.99)
+
+        fake_pkg = types.ModuleType("faster_whisper")
+        fake_pkg.WhisperModel = _LoopyModel
+        with mock.patch.dict(sys.modules, {"faster_whisper": fake_pkg}):
+            result = ts_svc.transcribe_audio("loop.m4a")
+        texts = [s.text for s in result.segments]
+        self.assertEqual(texts, ["real intro text", "looped phrase", "different ending"])
 
 
 class TestMediaIngestion(unittest.TestCase):

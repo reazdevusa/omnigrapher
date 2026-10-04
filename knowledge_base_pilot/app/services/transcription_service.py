@@ -227,6 +227,19 @@ def _swap_to_cpu_model(name: str) -> None:
         _device_in_use = "cpu"  # later models load straight onto CPU
 
 
+# Anti-hallucination decode options — whisper's most common long-form failure
+# is the conditioning loop: one hallucinated segment gets fed back as context
+# and the model repeats it for minutes. condition_on_previous_text=False makes
+# each window decode independently; no_repeat_ngram_size blocks intra-segment
+# phrase repeats; hallucination_silence_threshold (needs vad_filter) skips
+# silence after a detected hallucination instead of decoding through it.
+_ANTI_LOOP_KWARGS = dict(
+    condition_on_previous_text=False,
+    no_repeat_ngram_size=3,
+    hallucination_silence_threshold=2.0,
+)
+
+
 def _transcribe_with_retry(model_name: str, path: str, beam_size: int,
                            **kwargs) -> Tuple[list, object]:
     """Run transcribe() and fully materialize the lazy segment generator.
@@ -239,7 +252,8 @@ def _transcribe_with_retry(model_name: str, path: str, beam_size: int,
     model = get_whisper_model(model_name)
     try:
         segments_iter, info = model.transcribe(
-            path, beam_size=beam_size, vad_filter=True, **kwargs
+            path, beam_size=beam_size, vad_filter=True,
+            **_ANTI_LOOP_KWARGS, **kwargs
         )
         return list(segments_iter), info
     except RuntimeError as exc:
@@ -252,7 +266,7 @@ def _transcribe_with_retry(model_name: str, path: str, beam_size: int,
         _swap_to_cpu_model(model_name)
         model = get_whisper_model(model_name)
         segments_iter, info = model.transcribe(
-            path, beam_size=1, vad_filter=True, **kwargs
+            path, beam_size=1, vad_filter=True, **_ANTI_LOOP_KWARGS, **kwargs
         )
         return list(segments_iter), info
 
@@ -283,12 +297,23 @@ def _auto_beam_size() -> int:
 def _build_result(segments_raw, info, model_name: str, translated: bool) -> TranscriptResult:
     segments: List[TranscriptSegment] = []
     parts: List[str] = []
+    dropped = 0
+    last_text = ""
     for seg in segments_raw:
         text = (seg.text or "").strip()
         if not text:
             continue
+        # Collapse consecutive identical segments — whisper hallucination
+        # loops emit the same phrase many times in a row. A speaker repeating
+        # a word once is kept; a run of 2+ identical segments is a decode bug.
+        if text.lower() == last_text:
+            dropped += 1
+            continue
+        last_text = text.lower()
         segments.append(TranscriptSegment(start=float(seg.start), end=float(seg.end), text=text))
         parts.append(text)
+    if dropped:
+        logger.warning("Dropped %d repeated hallucination segments", dropped)
     lang = getattr(info, "language", None)
     return TranscriptResult(
         text=" ".join(parts),
@@ -325,7 +350,7 @@ def transcribe_audio(
     if not language and WHISPER_FAST_MODEL:
         try:
             segments_iter, info = get_whisper_model(WHISPER_FAST_MODEL).transcribe(
-                path, beam_size=beam_size, vad_filter=True
+                path, beam_size=beam_size, vad_filter=True, **_ANTI_LOOP_KWARGS
             )
             lang = getattr(info, "language", None)
             prob = float(getattr(info, "language_probability", 0.0) or 0.0)
