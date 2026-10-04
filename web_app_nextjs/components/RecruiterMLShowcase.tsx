@@ -252,6 +252,9 @@ function SpeechTab({
   const [question, setQuestion] = React.useState("");
   const [askResult, setAskResult] = React.useState<api.MediaAskResponse | null>(null);
   const [asking, setAsking] = React.useState(false);
+  const [jobStage, setJobStage] = React.useState("");
+  const [jobStartedAt, setJobStartedAt] = React.useState<number | null>(null);
+  const [jobElapsed, setJobElapsed] = React.useState(0);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
   // Reload a persisted result when a history item is selected
@@ -263,14 +266,48 @@ function SpeechTab({
     }
   }, [inject]);
 
-  const runUpload = async (file: File) => {
-    if (!token) return toast.error("Please sign in first");
+  // Ticker for the elapsed-time display while a transcription job runs
+  React.useEffect(() => {
+    if (!busy || jobStartedAt == null) return;
+    const t = setInterval(
+      () => setJobElapsed(Math.floor((Date.now() - jobStartedAt) / 1000)),
+      1000
+    );
+    return () => clearInterval(t);
+  }, [busy, jobStartedAt]);
+
+  const pollTranscribeJob = async (jobId: number): Promise<api.TranscriptResponse> => {
+    for (;;) {
+      const job = await api.getJobStatus(token!, jobId);
+      if (job.status === "completed") {
+        return JSON.parse(job.result || "{}") as api.TranscriptResponse;
+      }
+      if (job.status === "failed") {
+        let msg = "Transcription failed";
+        try { msg = JSON.parse(job.result || "{}").error || msg; } catch {}
+        throw new Error(msg);
+      }
+      try { setJobStage(JSON.parse(job.result || "{}").stage || "running"); } catch {}
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  };
+
+  const startJob = () => {
     setBusy(true);
     setResult(null);
     setSummary("");
     setAskResult(null);
+    setJobStage("queued");
+    setJobElapsed(0);
+    setJobStartedAt(Date.now());
+  };
+
+  const runUpload = async (file: File) => {
+    if (!token) return toast.error("Please sign in first");
+    startJob();
     try {
-      const r = await api.transcribeMediaUpload(token, file);
+      const start = await api.transcribeMediaUpload(token, file);
+      const r = await pollTranscribeJob(start.job_id);
       setResult(r);
       onSaved?.();
       toast.success(`Transcribed ${r.segments.length} segments (${r.indexed_chunks} indexed${r.graph_entities ? `, ${r.graph_entities} graph entities` : ""})`);
@@ -278,18 +315,17 @@ function SpeechTab({
       toast.error(e.message || "Transcription failed");
     } finally {
       setBusy(false);
+      setJobStartedAt(null);
     }
   };
 
   const runUrl = async () => {
     if (!token) return toast.error("Please sign in first");
     if (!url.trim()) return;
-    setBusy(true);
-    setResult(null);
-    setSummary("");
-    setAskResult(null);
+    startJob();
     try {
-      const r = await api.transcribeMediaUrl(token, url.trim());
+      const start = await api.transcribeMediaUrl(token, url.trim());
+      const r = await pollTranscribeJob(start.job_id);
       setResult(r);
       onSaved?.();
       toast.success(`Transcribed from URL (${r.segments.length} segments)`);
@@ -297,6 +333,7 @@ function SpeechTab({
       toast.error(e.message || "URL transcription failed");
     } finally {
       setBusy(false);
+      setJobStartedAt(null);
     }
   };
 
@@ -365,7 +402,11 @@ function SpeechTab({
         <Card>
           <CardContent className="py-6 flex items-center gap-3 text-sm text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            Running faster-whisper locally — first run downloads the model…
+            <span>
+              Transcription running as a background job — stage: <b>{jobStage || "starting"}</b>
+              {jobElapsed > 0 && <> · elapsed {Math.floor(jobElapsed / 60)}:{String(jobElapsed % 60).padStart(2, "0")}</>}
+              . Long videos can take a while; the result is saved to Previous Results even if you leave this page.
+            </span>
           </CardContent>
         </Card>
       )}

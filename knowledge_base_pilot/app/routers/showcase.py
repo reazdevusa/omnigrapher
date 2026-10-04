@@ -6,9 +6,11 @@ All heavy work (Whisper, OCR, ONNX) runs in threadpool so the event loop stays
 responsive; heavy libraries are imported lazily inside the services.
 """
 
+import json
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -19,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
-from app.database import ShowcaseResult, User, get_db
+from app.database import Job, ShowcaseResult, User, create_db_session, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,17 @@ class TranscribeURLRequest(BaseModel):
     url: str
     language: Optional[str] = None
     index: bool = True
+
+
+class TranscribeJobResponse(BaseModel):
+    """202 response: transcription runs as a tracked background job.
+
+    Poll GET /api/jobs/{job_id}. While running, `result` holds
+    {"stage": ...}; on completion it holds the full transcript payload;
+    on failure {"error": ...}."""
+    job_id: int
+    status: str
+    detail: str = "Transcription queued. Poll GET /api/jobs/{job_id} for progress."
 
 
 class SummarizeRequest(BaseModel):
@@ -222,7 +235,93 @@ def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: i
     )
 
 
-@router.post("/transcribe", response_model=TranscriptResponse)
+def _set_job_stage(db: Session, job_id: int, stage: str) -> None:
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if job:
+        job.result = json.dumps({"stage": stage})
+        db.commit()
+
+
+def _run_transcribe_job(
+    job_id: int,
+    owner_id: int,
+    *,
+    url: Optional[str],
+    file_path: Optional[Path],
+    language: Optional[str],
+    index: bool,
+    display_name: str,
+) -> None:
+    """Background transcription worker — owns its DB session.
+
+    Long media (a 1h+ video takes tens of minutes on whisper) cannot run
+    inside a request/response cycle without hitting client timeouts, so the
+    POST endpoints return a job id immediately and this thread does the work.
+    The final transcript lands in the Job.result column AND in showcase
+    history, so it survives even if the user navigates away mid-run.
+    """
+    from app.services.media_ingestion_service import resolve_media_source
+
+    db = create_db_session()
+    cleanup_file = file_path is not None
+    try:
+        _set_job_stage(db, job_id, "downloading" if url else "transcribing")
+
+        source_ref = display_name
+        if url:
+            source = resolve_media_source(url)
+            path = source.local_path
+            source_ref = source.source_ref
+            display_name = source.display_name or source.source_ref
+        else:
+            path = file_path
+
+        _set_job_stage(db, job_id, "transcribing")
+        resp = _do_transcribe(path, language, index, owner_id, source_ref)
+
+        _set_job_stage(db, job_id, "saving")
+        _save_result(db, owner_id, "transcript", display_name, source_ref, resp.model_dump())
+
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job:
+            job.status = "completed"
+            job.result = json.dumps(resp.model_dump())
+            db.commit()
+        logger.info("Transcription job %s completed (%s, %s)", job_id, source_ref, display_name)
+    except Exception as exc:
+        logger.exception("Transcription job %s failed", job_id)
+        try:
+            db.rollback()
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.status = "failed"
+                job.result = json.dumps({"stage": "failed", "error": str(exc)})
+                db.commit()
+        except Exception:
+            logger.exception("Could not mark transcription job %s as failed", job_id)
+    finally:
+        if cleanup_file and file_path:
+            Path(file_path).unlink(missing_ok=True)
+        db.close()
+
+
+def _queue_transcribe_job(
+    db: Session, owner_id: int, job_type: str, **worker_kwargs
+) -> TranscribeJobResponse:
+    job = Job(owner_id=owner_id, job_type=job_type, status="running")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    threading.Thread(
+        target=_run_transcribe_job,
+        args=(job.id, owner_id),
+        kwargs=worker_kwargs,
+        daemon=True,
+    ).start()
+    return TranscribeJobResponse(job_id=job.id, status="running")
+
+
+@router.post("/transcribe", response_model=TranscribeJobResponse, status_code=status.HTTP_202_ACCEPTED)
 async def transcribe_upload(
     file: UploadFile = File(...),
     language: Optional[str] = Form(default=None),
@@ -238,38 +337,24 @@ async def transcribe_upload(
             detail="Unsupported media type. Use .mp3 .mp4 .wav .m4a",
         )
     tmp = _save_upload(file)
-    try:
-        import asyncio
-        resp = await asyncio.to_thread(
-            _do_transcribe, tmp, language, index, user.id, file.filename or tmp.name
-        )
-    finally:
-        tmp.unlink(missing_ok=True)
-    _save_result(db, user.id, "transcript", file.filename or resp.source_ref, resp.source_ref, resp.model_dump())
-    return resp
+    return _queue_transcribe_job(
+        db, user.id, "transcribe-upload",
+        url=None, file_path=tmp, language=language, index=index,
+        display_name=file.filename or tmp.name,
+    )
 
 
-@router.post("/transcribe-url", response_model=TranscriptResponse)
+@router.post("/transcribe-url", response_model=TranscribeJobResponse, status_code=status.HTTP_202_ACCEPTED)
 async def transcribe_url(
     payload: TranscribeURLRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    import asyncio
-    from app.services.media_ingestion_service import resolve_media_source
-
-    try:
-        source = await asyncio.to_thread(resolve_media_source, payload.url)
-    except (FileNotFoundError, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
-
-    resp = await asyncio.to_thread(
-        _do_transcribe, source.local_path, payload.language, payload.index, user.id, source.source_ref
+    return _queue_transcribe_job(
+        db, user.id, "transcribe-url",
+        url=payload.url, file_path=None, language=payload.language,
+        index=payload.index, display_name=payload.url,
     )
-    _save_result(db, user.id, "transcript", source.display_name or source.source_ref, source.source_ref, resp.model_dump())
-    return resp
 
 
 def _generate_answer(question: str, context_chunks: List[str], instruction: str) -> str:

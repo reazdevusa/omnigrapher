@@ -5,6 +5,7 @@ Heavy third-party engines (faster-whisper, yt-dlp, OCR, PEFT server) are
 mocked so the suite runs anywhere without model downloads or network access.
 """
 
+import json
 import sys
 import types
 import unittest
@@ -447,6 +448,18 @@ class TestMLEngineService(unittest.TestCase):
 # Showcase router (end-to-end shape, engines mocked)
 # ---------------------------------------------------------------------------
 
+def _wait_job(client: TestClient, job_id: int, timeout: float = 20.0) -> dict:
+    """Poll GET /api/jobs/{id} until the background worker finishes."""
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job["status"] in ("completed", "failed"):
+            return job
+        time.sleep(0.1)
+    raise AssertionError(f"job {job_id} did not finish within {timeout}s")
+
+
 class TestShowcaseRouter(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
@@ -481,8 +494,11 @@ class TestShowcaseRouter(unittest.TestCase):
                 "/api/showcase/transcribe",
                 files={"file": ("demo.wav", b"RIFF-fake-audio", "audio/wav")},
             )
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
+            job_id = resp.json()["job_id"]
+            job = _wait_job(self.client, job_id)
+        self.assertEqual(resp.status_code, 202)
+        self.assertEqual(job["status"], "completed")
+        data = json.loads(job["result"])
         self.assertEqual(data["language"], "en")
         self.assertEqual(len(data["segments"]), 3)
         self.assertEqual(data["segments"][2]["start_label"], "00:06")
@@ -494,7 +510,10 @@ class TestShowcaseRouter(unittest.TestCase):
             "/api/showcase/transcribe-url",
             json={"url": r"C:\missing\clip.mp4", "index": False},
         )
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 202)
+        job = _wait_job(self.client, resp.json()["job_id"])
+        self.assertEqual(job["status"], "failed")
+        self.assertIn("error", json.loads(job["result"]))
 
     def test_ml_adapters_endpoint(self):
         svc = ml_svc.get_ml_engine_service()
@@ -851,7 +870,9 @@ class TestShowcaseHistory(unittest.TestCase):
                 "/api/showcase/transcribe",
                 files={"file": ("demo.wav", b"RIFF-fake-audio", "audio/wav")},
             )
-        self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.status_code, 202)
+            job = _wait_job(self.client, resp.json()["job_id"])
+        self.assertEqual(job["status"], "completed")
 
         hist = self.client.get("/api/showcase/history?kind=transcript").json()["items"]
         self.assertEqual(len(hist), 1)

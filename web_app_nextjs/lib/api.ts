@@ -369,18 +369,36 @@ async function postForm<T>(path: string, formData: FormData): Promise<T> {
   return res.json();
 }
 
-export async function transcribeMediaUpload(token: string, file: File): Promise<TranscriptResponse> {
+// Transcription runs as a tracked background job (202 + job_id) because long
+// media can take far longer than any sane request timeout. The result JSON is
+// stored on the Job row and polled via getJobStatus.
+export interface TranscribeJobStart {
+  job_id: number;
+  status: string;
+  detail?: string;
+}
+
+export interface JobStatus {
+  id: number;
+  job_type: string;
+  status: "pending" | "running" | "completed" | "failed" | string;
+  result: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function transcribeMediaUpload(token: string, file: File): Promise<TranscribeJobStart> {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("index", "true");
   return postForm("/api/showcase/transcribe", fd);
 }
 
-export async function transcribeMediaUrl(token: string, url: string): Promise<TranscriptResponse> {
+export async function transcribeMediaUrl(token: string, url: string): Promise<TranscribeJobStart> {
   return fetchJson("/api/showcase/transcribe-url", {
     method: "POST",
     body: JSON.stringify({ url, index: true }),
-  }, token, UPLOAD_TIMEOUT_MS);
+  }, token);
 }
 
 export async function summarizeTranscript(token: string, transcript: string): Promise<{ summary: string; model: string }> {
@@ -736,7 +754,7 @@ export async function listJobs(token: string) {
   return fetchJson("/api/jobs", {}, token);
 }
 
-export async function getJobStatus(token: string, jobId: string) {
+export async function getJobStatus(token: string, jobId: string | number): Promise<JobStatus> {
   return fetchJson(`/api/jobs/${jobId}`, {}, token);
 }
 
