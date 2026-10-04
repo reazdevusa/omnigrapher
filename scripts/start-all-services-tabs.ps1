@@ -127,6 +127,17 @@ Write-Log "Ollama models verified." Green
 
 Write-Log "[5/5] Waiting for backend and frontend to be ready..." Cyan
 Wait-For-HttpEndpoint -Uri "http://localhost:$BackendPort/" -TimeoutSeconds 300
+
+# The frontend host port is configurable — scripts/up.ps1 may have written a
+# non-default FRONTEND_PORT to the repo-root .env when 3000 was taken.
+$envFile = Join-Path $PSScriptRoot "..\.env"
+if (Test-Path $envFile) {
+    $portLine = Get-Content $envFile | Where-Object { $_ -match '^\s*FRONTEND_PORT\s*=' } | Select-Object -Last 1
+    if ($portLine -match '=\s*(\d+)') {
+        $FrontendPort = [int]$Matches[1]
+    }
+}
+
 $frontendUrl = "http://localhost:$FrontendPort/"
 Wait-For-HttpEndpoint -Uri $frontendUrl -TimeoutSeconds 180
 Write-Log "Backend and frontend are healthy." Green
