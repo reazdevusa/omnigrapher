@@ -280,6 +280,9 @@ export interface TranscriptSegment {
 export interface TranscriptResponse {
   text: string;
   language?: string;
+  language_name?: string;
+  language_probability?: number;
+  translated?: boolean;
   duration_seconds?: number;
   model: string;
   device: string;

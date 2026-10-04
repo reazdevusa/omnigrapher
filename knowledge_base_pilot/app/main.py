@@ -362,12 +362,15 @@ def _prewarm_rag():
 
 
 def _warmup_whisper():
-    """Load the faster-whisper model in the background so the first transcription
-    request doesn't pay the ~10-15s model init (GPU context + weights)."""
+    """Load the faster-whisper models in the background so the first
+    transcription request doesn't pay the ~15-25s model init (GPU context +
+    weights). Fast model first (common path), then the multilingual model."""
     try:
-        from app.services.transcription_service import get_whisper_model
-        get_whisper_model()
-        logger.info("Whisper model prewarmed")
+        from app.services import transcription_service as ts
+        if ts.WHISPER_FAST_MODEL:
+            ts.get_whisper_model(ts.WHISPER_FAST_MODEL)
+        ts.get_whisper_model(ts.WHISPER_MODEL)
+        logger.info("Whisper model(s) prewarmed")
     except Exception:
         logger.warning("Whisper prewarm failed (will retry on first request)", exc_info=True)
 

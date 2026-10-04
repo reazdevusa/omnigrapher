@@ -141,9 +141,12 @@ services:
       - OLLAMA_BASE_URL=http://ai-gateway:8005
       - PEFT_ENGINE_URL=http://ai-gateway:8005
       # GPU transcription on the RTX 3060 (falls back to CPU int8 at runtime
-      # if CUDA is unavailable). ~10-20x realtime vs ~0.5x on CPU.
+      # if CUDA is unavailable). large-v3 transcribes ~99 languages in their
+      # native script; turbo serves confident English at ~7x realtime.
       - WHISPER_DEVICE=cuda
-      - WHISPER_COMPUTE_TYPE=float16
+      - WHISPER_COMPUTE_TYPE=int8_float16
+      - WHISPER_MODEL=large-v3
+      - WHISPER_FAST_MODEL=turbo
       - LLM_MODEL=llama3.2:latest
       - EMBED_MODEL=nomic-embed-text:latest
       - VLM_MODEL=llava:latest
@@ -200,7 +203,9 @@ services:
       - PYTHONPATH=/workspace
       - AEO_DATABASE_URL=sqlite:////data/aeo/aeo_studio.db
       - WHISPER_DEVICE=cuda
-      - WHISPER_COMPUTE_TYPE=float16
+      - WHISPER_COMPUTE_TYPE=int8_float16
+      - WHISPER_MODEL=large-v3
+      - WHISPER_FAST_MODEL=turbo
     volumes:
       - ./knowledge_base_pilot:/app
       - .:/workspace:ro

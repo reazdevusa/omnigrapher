@@ -34,29 +34,51 @@ class _FakeWhisperSegment:
 
 
 class _FakeWhisperInfo:
-    language = "en"
-    duration = 9.5
+    def __init__(self, language="en", duration=9.5, probability=1.0):
+        self.language = language
+        self.duration = duration
+        self.language_probability = probability
 
 
 class _FakeWhisperModel:
-    def __init__(self, *a, **k):
-        pass
+    """Scripted fake: RESPONSES maps model name → (lang, prob, text), with an
+    optional '<name>:translate' entry returned when task='translate'."""
 
-    def transcribe(self, path, language=None, beam_size=5, vad_filter=True):
-        segments = [
-            _FakeWhisperSegment(0.0, 2.5, " Hello and welcome to the demo."),
-            _FakeWhisperSegment(2.5, 6.0, " Today we cover RAG systems."),
-            _FakeWhisperSegment(6.0, 9.5, " Let's dive into adapters."),
-        ]
-        return iter(segments), _FakeWhisperInfo()
+    RESPONSES: dict = {}
+    CALLS: list = []
+
+    def __init__(self, name="base", *a, **k):
+        self.name = name
+
+    def transcribe(self, path, language=None, beam_size=5, vad_filter=True,
+                   task="transcribe"):
+        key = f"{self.name}:translate" if task == "translate" else self.name
+        default = ("en", 1.0, " Hello and welcome to the demo.")
+        lang, prob, text = self.RESPONSES.get(key, self.RESPONSES.get(self.name, default))
+        if language:
+            lang = language
+        type(self).CALLS.append((self.name, task))
+        if self.name in self.RESPONSES or key in self.RESPONSES:
+            segments = [_FakeWhisperSegment(0.0, 2.5, f" {text}")]
+        else:
+            segments = [
+                _FakeWhisperSegment(0.0, 2.5, " Hello and welcome to the demo."),
+                _FakeWhisperSegment(2.5, 6.0, " Today we cover RAG systems."),
+                _FakeWhisperSegment(6.0, 9.5, " Let's dive into adapters."),
+            ]
+        return iter(segments), _FakeWhisperInfo(language=lang, probability=prob)
 
 
 class TestTranscriptionService(unittest.TestCase):
     def setUp(self):
         ts_svc.reset_whisper_model()
+        _FakeWhisperModel.RESPONSES = {}
+        _FakeWhisperModel.CALLS = []
 
     def tearDown(self):
         ts_svc.reset_whisper_model()
+        _FakeWhisperModel.RESPONSES = {}
+        _FakeWhisperModel.CALLS = []
 
     def _patch_whisper(self):
         fake_pkg = types.ModuleType("faster_whisper")
@@ -85,6 +107,78 @@ class TestTranscriptionService(unittest.TestCase):
             m1 = ts_svc.get_whisper_model()
             m2 = ts_svc.get_whisper_model()
             self.assertIs(m1, m2)
+
+    def test_fast_path_serves_confident_english(self):
+        _FakeWhisperModel.RESPONSES = {
+            "turbo": ("en", 0.99, " Welcome to the demo."),
+            "large-v3": ("en", 0.99, " WRONG MODEL"),
+        }
+        with self._patch_whisper():
+            result = ts_svc.transcribe_audio("en.mp3")
+        self.assertEqual(result.model, "turbo")
+        self.assertIn("Welcome", result.text)
+        self.assertEqual(result.language, "en")
+
+    def test_low_confidence_detection_uses_quality_model(self):
+        # Reproduces the real Bengali clip: turbo mis-detected en @ 0.56 while
+        # large-v3 detected bn @ 0.98 and produced native script.
+        _FakeWhisperModel.RESPONSES = {
+            "turbo": ("en", 0.56, " latin gibberish"),
+            "large-v3": ("bn", 0.98, " লিংকডইনে নেটওয়ার্কিং করুন"),
+        }
+        with self._patch_whisper():
+            result = ts_svc.transcribe_audio("bn.m4a")
+            payload = ts_svc.transcript_to_json(result)
+        self.assertEqual(result.model, "large-v3")
+        self.assertEqual(payload["language"], "bn")
+        self.assertEqual(payload["language_name"], "Bengali")
+        self.assertAlmostEqual(payload["language_probability"], 0.98)
+        self.assertIn("লিংকডইনে", payload["text"])
+        self.assertFalse(payload["translated"])
+
+    def test_explicit_language_skips_fast_model(self):
+        _FakeWhisperModel.RESPONSES = {
+            "large-v3": ("bn", 0.98, " বাংলা ভাষায় কথা"),
+        }
+        with self._patch_whisper():
+            result = ts_svc.transcribe_audio("bn.m4a", language="bn")
+        self.assertEqual(result.model, "large-v3")
+        self.assertNotIn(("turbo", "transcribe"), _FakeWhisperModel.CALLS)
+
+    def test_script_mismatch_falls_back_to_english_translation(self):
+        # Quality model detected bn but emitted romanized/Latin text — the
+        # unsupported-language path should rerun with task="translate".
+        _FakeWhisperModel.RESPONSES = {
+            "turbo": ("bn", 0.60, " x"),
+            "large-v3": ("bn", 0.95, "linkedin networking strategy video"),
+            "large-v3:translate": ("bn", 0.95, "LinkedIn networking strategy video"),
+        }
+        with self._patch_whisper():
+            result = ts_svc.transcribe_audio("bn.m4a")
+            payload = ts_svc.transcript_to_json(result)
+        self.assertTrue(payload["translated"])
+        self.assertEqual(payload["language"], "bn")
+        self.assertIn("LinkedIn", payload["text"])
+        self.assertIn(("large-v3", "translate"), _FakeWhisperModel.CALLS)
+
+    def test_mixed_language_text_is_preserved(self):
+        _FakeWhisperModel.RESPONSES = {
+            "turbo": ("bn", 0.60, " x"),
+            "large-v3": ("bn", 0.97, "লিংকডইনে নেটওয়ার্কিং most important স্ট্র্যাটেজি ফলো করুন"),
+        }
+        with self._patch_whisper():
+            result = ts_svc.transcribe_audio("mixed.m4a")
+        self.assertFalse(result.translated)
+        self.assertIn("লিংকডইনে", result.text)
+        self.assertIn("most important", result.text)
+
+    def test_script_consistency_check(self):
+        self.assertTrue(ts_svc._script_consistent("লিংকডইনে নেটওয়ার্কিং করুন", "bn"))
+        self.assertFalse(ts_svc._script_consistent("linkedin networking", "bn"))
+        self.assertTrue(ts_svc._script_consistent("hello world", "en"))
+        self.assertTrue(
+            ts_svc._script_consistent("লিংকডইনে নেটওয়ার্কিং most important করুন", "bn")
+        )
 
     def test_timestamp_formatting(self):
         self.assertEqual(ts_svc.format_timestamp(0), "00:00")

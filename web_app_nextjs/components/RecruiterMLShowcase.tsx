@@ -365,7 +365,7 @@ function SpeechTab({
         <Card>
           <CardContent className="py-6 flex items-center gap-3 text-sm text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            Running faster-whisper locally — first run downloads the base model…
+            Running faster-whisper locally — first run downloads the model…
           </CardContent>
         </Card>
       )}
@@ -375,7 +375,13 @@ function SpeechTab({
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary">Whisper {result.model}</Badge>
             <Badge variant="secondary">{result.device}</Badge>
-            {result.language && <Badge variant="outline">lang: {result.language}</Badge>}
+            {result.language && (
+              <Badge variant="outline">
+                {result.language_name || result.language}
+                {result.language_probability ? ` ${Math.round(result.language_probability * 100)}%` : ""}
+              </Badge>
+            )}
+            {result.translated && <Badge variant="secondary">translated to English</Badge>}
             {result.duration_seconds != null && (
               <Badge variant="outline">{Math.round(result.duration_seconds)}s audio</Badge>
             )}

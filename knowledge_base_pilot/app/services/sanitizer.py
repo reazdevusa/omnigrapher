@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from collections import Counter
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
@@ -61,19 +61,23 @@ def _regex_sanitize(text: str, redact_names: bool = True) -> tuple[str, Counter]
     return text, counts
 
 
-# Attempt to load Presidio; if it fails (missing model, dependencies, etc.) the
-# regex fallback handles the most common PII patterns.
-try:
-    from presidio_analyzer import AnalyzerEngine
-    from presidio_analyzer.recognizer_registry import RecognizerRegistry
-    from presidio_anonymizer import AnonymizerEngine
+# Presidio is imported lazily inside _get_presidio_analyzer: importing it at
+# module level pulls transformers/torch into `import app.main` and breaks the
+# startup-latency budget. If it's unavailable the regex fallback handles the
+# most common PII patterns.
+try:  # pragma: no cover - availability probe only
+    import importlib.util as _importlib_util
 
-    _presidio_available = True
-except Exception:  # pragma: no cover
+    _presidio_available = all(
+        _importlib_util.find_spec(pkg) is not None
+        for pkg in ("presidio_analyzer", "presidio_anonymizer")
+    )
+except Exception:
     _presidio_available = False
-    AnalyzerEngine = None  # type: ignore[misc,assignment]
-    RecognizerRegistry = None  # type: ignore[misc,assignment]
-    AnonymizerEngine = None  # type: ignore[misc,assignment]
+
+if TYPE_CHECKING:  # pragma: no cover
+    from presidio_analyzer import AnalyzerEngine
+    from presidio_anonymizer import AnonymizerEngine
 
 
 _cached_analyzer: Optional["AnalyzerEngine"] = None
@@ -82,12 +86,14 @@ _analyzer_init_failed: bool = False
 
 def _get_presidio_analyzer() -> Optional["AnalyzerEngine"]:
     global _cached_analyzer, _analyzer_init_failed
-    if not _presidio_available or AnalyzerEngine is None or _analyzer_init_failed:
+    if not _presidio_available or _analyzer_init_failed:
         return None
     if _cached_analyzer is not None:
         return _cached_analyzer
     try:
+        from presidio_analyzer import AnalyzerEngine
         from presidio_analyzer.nlp_engine import NlpEngineProvider
+        from presidio_analyzer.recognizer_registry import RecognizerRegistry
 
         nlp_config = {
             "nlp_engine_name": "spacy",
@@ -132,6 +138,7 @@ def _presidio_sanitize(text: str, analyzer: "AnalyzerEngine", redact_names: bool
     }
 
     # Anonymize with replacement operators.
+    from presidio_anonymizer import AnonymizerEngine
     from presidio_anonymizer.entities import EngineResult, OperatorConfig
 
     anonymizer = AnonymizerEngine()

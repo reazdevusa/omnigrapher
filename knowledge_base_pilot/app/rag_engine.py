@@ -1674,7 +1674,9 @@ def index_document(
             **role_metadata,
         }
         if allowed_roles:
-            metadata["allowed_roles"] = allowed_roles
+            # ChromaDB metadata must be scalar — store roles comma-joined
+            # (readers split on ","; role_* flags carry the indexed form).
+            metadata["allowed_roles"] = ",".join(allowed_roles)
         if tenant_id is not None:
             metadata["tenant_id"] = tenant_id
         document.metadata.update(metadata)
@@ -1712,7 +1714,7 @@ def index_document(
         node.metadata["visibility"] = visibility
         node.metadata.update(role_metadata)
         if allowed_roles:
-            node.metadata["allowed_roles"] = allowed_roles
+            node.metadata["allowed_roles"] = ",".join(allowed_roles)
         if tenant_id is not None:
             node.metadata["tenant_id"] = tenant_id
 

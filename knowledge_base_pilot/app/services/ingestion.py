@@ -71,7 +71,8 @@ def ingest_document(
             "visibility": visibility,
         }
         if allowed_roles:
-            metadata["allowed_roles"] = allowed_roles
+            # ChromaDB metadata must be scalar — store roles comma-joined.
+            metadata["allowed_roles"] = ",".join(allowed_roles)
         if tenant_id is not None:
             metadata["tenant_id"] = tenant_id
         document.metadata.update(metadata)
@@ -110,7 +111,7 @@ def ingest_document(
         node.metadata["ingestion_id"] = ingestion_id
         node.metadata["visibility"] = visibility
         if allowed_roles:
-            node.metadata["allowed_roles"] = allowed_roles
+            node.metadata["allowed_roles"] = ",".join(allowed_roles)
         if tenant_id is not None:
             node.metadata["tenant_id"] = tenant_id
 

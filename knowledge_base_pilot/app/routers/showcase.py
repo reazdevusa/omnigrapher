@@ -40,6 +40,9 @@ class TranscriptSegmentOut(BaseModel):
 class TranscriptResponse(BaseModel):
     text: str
     language: Optional[str] = None
+    language_name: Optional[str] = None
+    language_probability: float = 0.0
+    translated: bool = False
     duration_seconds: Optional[float] = None
     model: str
     device: str
@@ -206,6 +209,9 @@ def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: i
     return TranscriptResponse(
         text=payload["text"],
         language=payload["language"],
+        language_name=payload.get("language_name"),
+        language_probability=payload.get("language_probability", 0.0),
+        translated=payload.get("translated", False),
         duration_seconds=payload["duration_seconds"],
         model=payload["model"],
         device=payload["device"],

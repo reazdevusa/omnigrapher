@@ -50,9 +50,11 @@ class TestRBACRetrieval(unittest.TestCase):
                 m.pop("allowed_roles", None)
             else:
                 # Mirror real ingest: role access is indexed via role_* boolean
-                # keys so the ChromaDB pre-filter can match them.
+                # keys so the ChromaDB pre-filter can match them, and the raw
+                # list is stored comma-joined (ChromaDB metadata is scalar-only).
                 for role in m["allowed_roles"]:
                     m[f"role_{role}"] = True
+                m["allowed_roles"] = ",".join(m["allowed_roles"])
             cleaned.append(m)
         collection.add(
             ids=ids,
