@@ -233,6 +233,9 @@ services:
     environment:
       - INTERNAL_API_URL=http://backend:8001
       - NEXT_PUBLIC_BACKEND_URL=http://localhost:8001
+      # Windows bind mounts don't propagate fs events — poll so hot reload works
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
     volumes:
