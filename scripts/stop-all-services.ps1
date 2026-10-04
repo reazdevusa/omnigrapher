@@ -41,9 +41,11 @@ $state.services | ForEach-Object {
 
 Remove-Item $runFile -Force -ErrorAction SilentlyContinue
 
-# Forcefully kill any leftover processes still occupying key ports (8001, 3000)
-# even if they were not tracked in .services.json (e.g. orphaned uvicorn / next dev).
-foreach ($port in @(8001, 3000)) {
+# Forcefully kill any leftover processes still occupying ports this script
+# actually bound (e.g. orphaned uvicorn / next dev). Never touch arbitrary
+# fixed ports - they may belong to unrelated applications.
+$ourPorts = @($state.services | Where-Object { $null -ne $_.port } | ForEach-Object { [int]$_.port } | Select-Object -Unique)
+foreach ($port in $ourPorts) {
     $connections = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
     foreach ($conn in $connections) {
         if ($conn.OwningProcess -and $conn.OwningProcess -gt 0) {

@@ -26,6 +26,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot\port-utils.ps1"
+$envFile = Join-Path $PSScriptRoot "..\.env"
+
 function Write-Log {
     param([string]$Message)
     $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -86,35 +89,55 @@ $state = [ordered]@{
 # ---------------------------------------------------------------------------
 if (Get-Command docker -ErrorAction SilentlyContinue) {
     Write-Log "Starting Docker infrastructure..."
+    # Pick free host ports for every published service before compose binds.
+    & "$PSScriptRoot\resolve-ports.ps1" | Out-Null
     docker compose -f $ComposeFile up -d
     if ($LASTEXITCODE -ne 0) {
         throw "docker compose up -d failed with exit code $LASTEXITCODE"
     }
-    Wait-For-Port -Port 5433 -TimeoutSeconds 120
-    Wait-For-Port -Port 8002 -TimeoutSeconds 120
-    Wait-For-Port -Port 6379 -TimeoutSeconds 120
+    Wait-For-Port -Port (Get-EnvPort "POSTGRES_PORT" 5433 $envFile) -TimeoutSeconds 120
+    Wait-For-Port -Port (Get-EnvPort "CHROMADB_PORT" 8002 $envFile) -TimeoutSeconds 120
+    Wait-For-Port -Port (Get-EnvPort "REDIS_PORT" 6379 $envFile) -TimeoutSeconds 120
     Write-Log "Docker infrastructure is ready."
 } else {
     Write-Log "Docker not found in PATH. Assuming infrastructure is already running."
 }
 
+# Ports resolved by the Docker pass (or already recorded in .env) apply to
+# the host-side checks below as well.
+$OllamaPort   = Get-EnvPort "OLLAMA_PORT"   11434        $envFile
+$BackendPort  = Get-EnvPort "BACKEND_PORT"  $BackendPort  $envFile
+$FrontendPort = Get-EnvPort "FRONTEND_PORT" $FrontendPort $envFile
+$RedisPort    = Get-EnvPort "REDIS_PORT"    6379         $envFile
+$ChromaPort   = Get-EnvPort "CHROMADB_PORT" 8002         $envFile
+$PostgresPort = Get-EnvPort "POSTGRES_PORT" 5433         $envFile
+
+# Host-mode processes reach Docker infrastructure via the resolved host
+# ports; set these BEFORE Start-Process so children inherit them.
+$env:REDIS_URL       = "redis://localhost:$RedisPort/0"
+$env:CHROMA_HOST     = "localhost"
+$env:CHROMA_PORT     = "$ChromaPort"
+$env:OLLAMA_BASE_URL = "http://localhost:$OllamaPort"
+$env:PG_DATABASE_URL = "postgresql+psycopg2://awap_user:awap_password@localhost:$PostgresPort/knowledge_base"
+$env:USE_POSTGRES    = "true"
+
 # ---------------------------------------------------------------------------
 # 2. Ollama
 # ---------------------------------------------------------------------------
-$ollamaRunning = Test-Port -Port 11434
+$ollamaRunning = Test-Port -Port $OllamaPort
 if (-not $ollamaRunning) {
     Write-Log "Starting Ollama..."
     $ollamaProc = Start-Process powershell.exe -ArgumentList "-NoExit", "-Command", "ollama serve" -PassThru -WindowStyle Normal
     $state.services += [ordered]@{
         name = "ollama"
         pid  = $ollamaProc.Id
-        port = 11434
+        port = $OllamaPort
         cmd  = "ollama serve"
     }
-    Wait-For-Port -Port 11434 -TimeoutSeconds 60
+    Wait-For-Port -Port $OllamaPort -TimeoutSeconds 60
     Write-Log "Ollama is ready."
 } else {
-    Write-Log "Ollama is already running on port 11434."
+    Write-Log "Ollama is already running on port $OllamaPort."
 }
 
 # ---------------------------------------------------------------------------
@@ -132,15 +155,14 @@ if (Test-Port -Port $BackendPort) {
 if ($backendHealthy) {
     Write-Log "Backend is already responding on port $BackendPort; skipping."
 } else {
-    if (Test-Port -Port $BackendPort) {
-        $stalePid = (Get-NetTCPConnection -LocalPort $BackendPort -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
-        if ($stalePid -and $stalePid -gt 0) {
-            Write-Log "Port $BackendPort is occupied by unhealthy PID $stalePid; terminating it..."
-            try { Stop-Process -Id $stalePid -Force -ErrorAction SilentlyContinue } catch {}
-            try { taskkill /PID $stalePid /T /F 2>&1 | Out-Null } catch {}
-            Start-Sleep -Seconds 2
-        }
+    # Port held by a foreign or unhealthy process - never kill it, just move on.
+    $scan = $BackendPort
+    while (-not (Test-PortFree $scan)) {
+        Write-Log "Port $scan in use by $(Get-PortOwner $scan) - trying next."
+        $scan++
+        if ($scan -gt $BackendPort + 20) { throw "No free backend port found above $BackendPort." }
     }
+    $BackendPort = $scan
     Write-Log "Starting backend on http://localhost:$BackendPort ..."
     $backendCmd = "cd '$BackendDir'; & '$Python' -m pip install -r requirements.txt; if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }; & '$Python' -m uvicorn app.main:app --reload --host 0.0.0.0 --port $BackendPort"
     $backendProc = Start-Process powershell.exe -ArgumentList "-NoExit", "-Command", $backendCmd -PassThru -WindowStyle Normal
@@ -178,15 +200,16 @@ if (Test-Port -Port $FrontendPort) {
 if ($frontendHealthy) {
     Write-Log "Frontend is already responding on port $FrontendPort; skipping."
 } else {
-    if (Test-Port -Port $FrontendPort) {
-        $stalePid = (Get-NetTCPConnection -LocalPort $FrontendPort -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
-        if ($stalePid -and $stalePid -gt 0) {
-            Write-Log "Port $FrontendPort is occupied by unhealthy PID $stalePid; terminating it..."
-            try { Stop-Process -Id $stalePid -Force -ErrorAction SilentlyContinue } catch {}
-            try { taskkill /PID $stalePid /T /F 2>&1 | Out-Null } catch {}
-            Start-Sleep -Seconds 2
-        }
+    # Port held by a foreign or unhealthy process - never kill it, just move on.
+    $scan = $FrontendPort
+    while (-not (Test-PortFree $scan)) {
+        Write-Log "Port $scan in use by $(Get-PortOwner $scan) - trying next."
+        $scan++
+        if ($scan -gt $FrontendPort + 20) { throw "No free frontend port found above $FrontendPort." }
     }
+    $FrontendPort = $scan
+    # Browser-side API calls must point at the port the backend actually got.
+    $env:NEXT_PUBLIC_BACKEND_URL = "http://localhost:$BackendPort"
     Write-Log "Starting Next.js frontend on http://localhost:$FrontendPort ..."
     $frontendCmd = "cd '$FrontendDir'; npm run dev -- --port $FrontendPort"
     $frontendProc = Start-Process powershell.exe -ArgumentList "-NoExit", "-Command", $frontendCmd -PassThru -WindowStyle Normal
@@ -205,6 +228,7 @@ if ($frontendHealthy) {
 # ---------------------------------------------------------------------------
 if ($Desktop) {
     Write-Log "Starting desktop app..."
+    $env:API_URL = "http://localhost:$BackendPort"  # desktop app reads API_URL
     $desktopCmd = "cd '$DesktopDir\src'; & '$Python' main.py"
     $desktopProc = Start-Process powershell.exe -ArgumentList "-NoExit", "-Command", $desktopCmd -PassThru -WindowStyle Normal
     $state.services += [ordered]@{

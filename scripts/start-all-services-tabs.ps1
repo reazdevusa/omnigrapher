@@ -14,10 +14,13 @@
 param(
     [int]$BackendPort = 8001,
     [int]$FrontendPort = 3000,
+    [int]$OllamaPort = 11434,
     [string]$ComposeFile = "$PSScriptRoot\..\docker-compose.yml"
 )
 
 $ErrorActionPreference = "Stop"
+
+. "$PSScriptRoot\port-utils.ps1"
 
 # Run from the directory that contains this script.
 Set-Location -LiteralPath $PSScriptRoot
@@ -96,19 +99,31 @@ if (-not (Test-Path $ComposeFile)) {
     throw "Docker Compose file was not found at $ComposeFile"
 }
 
-Write-Log "[2/5] Starting Docker Compose stack..." Cyan
+Write-Log "[2/5] Resolving host ports and starting Docker Compose stack..." Cyan
+# Auto-pick free host ports for every published service; ports held by
+# foreign processes are skipped, ports held by our containers are reused.
+& "$PSScriptRoot\resolve-ports.ps1"
+if ($LASTEXITCODE -ne 0) {
+    throw "Port resolution failed with exit code $LASTEXITCODE"
+}
 docker compose -f $ComposeFile up -d
 if ($LASTEXITCODE -ne 0) {
     throw "docker compose up -d failed with exit code $LASTEXITCODE"
 }
 
+# Use the resolved ports for all host-side health checks / API calls.
+$envFile = Join-Path $PSScriptRoot "..\.env"
+$BackendPort  = Get-EnvPort -Var "BACKEND_PORT"  -Default $BackendPort  -EnvPath $envFile
+$FrontendPort = Get-EnvPort -Var "FRONTEND_PORT" -Default $FrontendPort -EnvPath $envFile
+$OllamaPort   = Get-EnvPort -Var "OLLAMA_PORT"   -Default $OllamaPort   -EnvPath $envFile
+
 Write-Log "[3/5] Waiting for Ollama to be ready..." Cyan
-Wait-For-HttpEndpoint -Uri "http://localhost:11434/api/tags" -TimeoutSeconds 600
+Wait-For-HttpEndpoint -Uri "http://localhost:$OllamaPort/api/tags" -TimeoutSeconds 600
 
 Write-Log "[4/5] Checking/pulling required Ollama models..." Cyan
 $embeddingModel = "nomic-embed-text:latest"
 $primaryModel = "llama3.2:latest"
-$availableModels = (Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 10).models.name
+$availableModels = (Invoke-RestMethod -Uri "http://localhost:$OllamaPort/api/tags" -TimeoutSec 10).models.name
 
 if ($embeddingModel -notin $availableModels) {
     Write-Log "Pulling $embeddingModel..." Yellow
@@ -119,7 +134,7 @@ if ($primaryModel -notin $availableModels) {
     docker exec knowledge-base-ollama ollama pull llama3.2 | Out-Null
 }
 
-$availableModels = (Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 10).models.name
+$availableModels = (Invoke-RestMethod -Uri "http://localhost:$OllamaPort/api/tags" -TimeoutSec 10).models.name
 if ($embeddingModel -notin $availableModels) {
     throw "Required Ollama embedding model is missing after auto-pull: $embeddingModel"
 }
@@ -127,17 +142,6 @@ Write-Log "Ollama models verified." Green
 
 Write-Log "[5/5] Waiting for backend and frontend to be ready..." Cyan
 Wait-For-HttpEndpoint -Uri "http://localhost:$BackendPort/" -TimeoutSeconds 300
-
-# The frontend host port is configurable — scripts/up.ps1 may have written a
-# non-default FRONTEND_PORT to the repo-root .env when 3000 was taken.
-$envFile = Join-Path $PSScriptRoot "..\.env"
-if (Test-Path $envFile) {
-    $portLine = Get-Content $envFile | Where-Object { $_ -match '^\s*FRONTEND_PORT\s*=' } | Select-Object -Last 1
-    if ($portLine -match '=\s*(\d+)') {
-        $FrontendPort = [int]$Matches[1]
-    }
-}
-
 $frontendUrl = "http://localhost:$FrontendPort/"
 Wait-For-HttpEndpoint -Uri $frontendUrl -TimeoutSeconds 180
 Write-Log "Backend and frontend are healthy." Green

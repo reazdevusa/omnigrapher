@@ -10,7 +10,8 @@ services:
       POSTGRES_USER: awap_user
       POSTGRES_PASSWORD: awap_password
     ports:
-      - "5433:5432"
+      # Host port auto-resolved by scripts/resolve-ports.ps1 (-> .env)
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -35,7 +36,7 @@ services:
     container_name: knowledge-base-chromadb
     restart: unless-stopped
     ports:
-      - "8002:8000"
+      - "${CHROMADB_PORT:-8002}:8000"
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -55,7 +56,7 @@ services:
     container_name: knowledge-base-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --dir /data
@@ -71,7 +72,7 @@ services:
     hostname: knowledge-base-ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
     deploy:
@@ -99,15 +100,15 @@ services:
     container_name: omnigrapher-ai-gateway
     restart: unless-stopped
     ports:
-      - "8005:8005"
+      - "${GATEWAY_PORT:-8005}:8005"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - PORT=8005
       - REDIS_HOST=redis
-      # peft_engine runs on the host venv (port 8003 per knowledge_base_pilot/.env;
-      # host:8002 is ChromaDB). Not a compose service.
-      - PEFT_ENGINE_URL=http://host.docker.internal:8003/v1
+      # peft_engine runs on the host venv (scripts/start-peft-engine.ps1 picks
+      # a free port and records PEFT_ENGINE_PORT in .env). Not a compose service.
+      - PEFT_ENGINE_URL=http://host.docker.internal:${PEFT_ENGINE_PORT:-8003}/v1
       - OLLAMA_URL=http://knowledge-base-ollama:11434/v1
     depends_on:
       redis:
@@ -126,7 +127,7 @@ services:
     container_name: knowledge-base-backend
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "${BACKEND_PORT:-8001}:8001"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -227,12 +228,13 @@ services:
     container_name: knowledge-base-frontend
     restart: unless-stopped
     ports:
-      # Host port is configurable — use scripts/start.ps1 to auto-pick a
-      # free port when 3000 is taken by another project.
+      # Host port is configurable - scripts/resolve-ports.ps1 picks a free
+      # port when 3000 is taken by another project.
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
       - INTERNAL_API_URL=http://backend:8001
-      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8001
+      # Browser-side API calls must follow the resolved backend host port.
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:${BACKEND_PORT:-8001}
       # Windows bind mounts don't propagate fs events — poll so hot reload works
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
