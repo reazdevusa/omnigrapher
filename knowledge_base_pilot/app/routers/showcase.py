@@ -419,7 +419,7 @@ async def transcribe_upload(
     if not is_media_file(file.filename or ""):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported media type. Use .mp3 .mp4 .wav .m4a",
+            detail="Unsupported media type. Use .mp3 .wav .m4a .mp4 .mkv .avi .mov .webm",
         )
     tmp = _save_upload(file)
     return _queue_transcribe_job(

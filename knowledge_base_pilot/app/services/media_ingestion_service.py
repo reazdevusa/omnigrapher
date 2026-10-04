@@ -14,7 +14,12 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-MEDIA_EXTENSIONS = {".mp3", ".mp4", ".wav", ".m4a", ".webm", ".opus", ".ogg", ".flac", ".aac", ".mkv", ".mov"}
+MEDIA_EXTENSIONS = {
+    # audio
+    ".mp3", ".wav", ".m4a", ".opus", ".ogg", ".flac", ".aac", ".wma", ".aiff", ".amr",
+    # video — audio track is extracted via ffmpeg before transcription
+    ".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".flv", ".mpeg", ".mpg", ".3gp", ".ts", ".m4v",
+}
 _MEDIA_DIR = Path(os.getenv("MEDIA_CACHE_DIR", tempfile.gettempdir())) / "omnigrapher_media"
 
 

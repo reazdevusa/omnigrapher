@@ -7,6 +7,7 @@ mocked so the suite runs anywhere without model downloads or network access.
 
 import json
 import sys
+import tempfile
 import types
 import unittest
 from types import SimpleNamespace
@@ -263,11 +264,75 @@ class TestTranscriptionService(unittest.TestCase):
                                  TRANSCRIBE_PROVIDER="local"):
             self.assertIsNone(cs.cloud_provider())
 
+    def test_plan_chunks_skips_short_files(self):
+        from pathlib import Path
+        from app.services import cloud_transcription_service as cs
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as fh:
+            fh.write(b"\0" * 1024)
+            path = Path(fh.name)
+        try:
+            with mock.patch.object(cs, "_duration_seconds", return_value=600.0):
+                self.assertEqual(cs._plan_chunks(path), [])
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_plan_chunks_splits_long_files_with_overlap(self):
+        from pathlib import Path
+        from app.services import cloud_transcription_service as cs
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as fh:
+            fh.write(b"\0" * 1024)
+            path = Path(fh.name)
+        try:
+            with mock.patch.object(cs, "_duration_seconds", return_value=2000.0):
+                spans = cs._plan_chunks(path)
+            # step = 900 - 2 = 898 -> offsets 0, 898, 1796
+            self.assertEqual([s[0] for s in spans], [0.0, 898.0, 1796.0])
+            self.assertEqual(spans[-1][1], 2000.0 - 1796.0)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_merge_chunk_results_drops_overlap_segments(self):
+        from app.services import cloud_transcription_service as cs
+        from app.services.transcription_service import TranscriptSegment
+        ordered = [
+            (0.0, "", [TranscriptSegment(0.0, 5.0, "hello"),
+                        TranscriptSegment(895.0, 900.0, "boundary word")]),
+            (898.0, "", [TranscriptSegment(0.0, 1.5, "dup of boundary"),
+                          TranscriptSegment(1.0, 5.0, "straddler keeps"),
+                          TranscriptSegment(3.0, 8.0, "next phrase")]),
+        ]
+        text, segs = cs._merge_chunk_results(ordered)
+        # pure-overlap segment dropped; straddler + later segments kept with offsets
+        self.assertEqual(len(segs), 4)
+        self.assertEqual(segs[2].start, 899.0)
+        self.assertNotIn("dup of boundary", text)
+        self.assertIn("straddler keeps", text)
+
+    def test_transcribe_cloud_falls_through_providers(self):
+        from pathlib import Path
+        from app.services import cloud_transcription_service as cs
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as fh:
+            fh.write(b"\0" * 1024)
+            path = Path(fh.name)
+        try:
+            with mock.patch.multiple(cs, GROQ_API_KEY="k", GEMINI_API_KEY="k",
+                                     TRANSCRIBE_PROVIDER="auto"), \
+                 mock.patch.object(cs, "_transcribe_groq",
+                                   side_effect=RuntimeError("rate limited")), \
+                 mock.patch.object(cs, "_transcribe_gemini", return_value="gemini-result") as gem:
+                self.assertEqual(cs.transcribe_cloud(path), "gemini-result")
+                gem.assert_called_once()
+        finally:
+            path.unlink(missing_ok=True)
+
 
 class TestMediaIngestion(unittest.TestCase):
     def test_is_media_file(self):
         self.assertTrue(media_svc.is_media_file("meeting.MP4"))
         self.assertTrue(media_svc.is_media_file("note.m4a"))
+        self.assertTrue(media_svc.is_media_file("clip.AVI"))
+        self.assertTrue(media_svc.is_media_file("movie.mkv"))
+        self.assertFalse(media_svc.is_media_file("doc.pdf"))
         self.assertFalse(media_svc.is_media_file("doc.pdf"))
 
     def test_resolve_local_missing_file_raises(self):
