@@ -1118,7 +1118,7 @@ export function RecruiterMLShowcase() {
   const refreshHistory = () => setHistoryKey((k) => k + 1);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-screen-2xl mx-auto">
       <div className="grid grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)] gap-6 items-start">
         <aside className="lg:sticky lg:top-6 order-2 lg:order-1">
           <HistoryPanel refreshKey={historyKey} onOpen={openHistoryItem} />
