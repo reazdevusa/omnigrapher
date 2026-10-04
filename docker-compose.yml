@@ -154,6 +154,9 @@ services:
       - GRAPH_RAG_ENABLED=false
       - PYTHONPATH=/workspace
       - AEO_DATABASE_URL=sqlite:////data/aeo/aeo_studio.db
+      # SQLite primary store lives on a named volume — a bind mount on the
+      # Windows host (9p) throws transient "disk I/O error" on commit.
+      - SQLITE_DATABASE_URL=sqlite:////data/kb/kb.db
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,6 +172,7 @@ services:
       - ./knowledge_base_pilot:/app
       - .:/workspace:ro
       - aeo_data:/data/aeo
+      - backend_data:/data/kb
       # Persist HuggingFace model cache across rebuilds/recreates —
       # re-downloading the Whisper model (~150MB) on every recreate is slow.
       - hf_models:/root/.cache/huggingface
@@ -207,10 +211,14 @@ services:
       - WHISPER_COMPUTE_TYPE=int8_float16
       - WHISPER_MODEL=large-v3
       - WHISPER_FAST_MODEL=turbo
+      # Must share the backend's SQLite primary store (named volume — see
+      # backend service). Without this celery reads a different kb.db.
+      - SQLITE_DATABASE_URL=sqlite:////data/kb/kb.db
     volumes:
       - ./knowledge_base_pilot:/app
       - .:/workspace:ro
       - aeo_data:/data/aeo
+      - backend_data:/data/kb
       - hf_models:/root/.cache/huggingface
     depends_on:
       postgres:
@@ -250,4 +258,5 @@ volumes:
   chroma_data:
   redis_data:
   aeo_data:
+  backend_data:
   hf_models:
