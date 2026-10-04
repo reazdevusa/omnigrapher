@@ -294,26 +294,16 @@ def _auto_beam_size() -> int:
     )
 
 
-def _normalize_script_artifacts(text: str, language: Optional[str]) -> str:
-    """Fix systematic whisper glyph substitutions for specific languages.
-
-    For Bengali, whisper reliably emits U+09B5 (঵) where ভ (U+09AD) is meant
-    — e.g. "঵িসা" instead of "ভিসা". U+09B5 is essentially never legitimate in
-    normal Bengali prose, so the mapping is unambiguous.
-    """
-    if language == "bn":
-        text = text.replace("঵", "ভ")
-    return text
-
-
 def _build_result(segments_raw, info, model_name: str, translated: bool) -> TranscriptResult:
+    from app.services.text_sanitizer_service import sanitize_text
+
     lang = getattr(info, "language", None)
     segments: List[TranscriptSegment] = []
     parts: List[str] = []
     dropped = 0
     last_text = ""
     for seg in segments_raw:
-        text = _normalize_script_artifacts((seg.text or "").strip(), lang)
+        text = sanitize_text((seg.text or "").strip(), lang)
         if not text:
             continue
         # Collapse consecutive identical segments — whisper hallucination

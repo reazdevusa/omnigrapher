@@ -12,7 +12,10 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from app.services.transcription_service import TranscriptResult
 
 from fastapi import (
     APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status,
@@ -147,22 +150,26 @@ class SemanticChunkRequest(BaseModel):
     threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
-def _save_result(db: Session, owner_id: int, kind: str, title: str, source_ref: str, payload: dict) -> None:
+def _save_result(db: Session, owner_id: int, kind: str, title: str, source_ref: str, payload: dict) -> Optional[int]:
     """Persist a showcase result for the history panel. Best-effort — never
-    lets a DB hiccup break the user-facing feature."""
+    lets a DB hiccup break the user-facing feature. Returns the row id."""
     import json
     try:
-        db.add(ShowcaseResult(
+        row = ShowcaseResult(
             owner_id=owner_id,
             kind=kind,
             title=title or source_ref or "untitled",
             source_ref=source_ref,
             payload=json.dumps(payload),
-        ))
+        )
+        db.add(row)
         db.commit()
+        db.refresh(row)
+        return row.id
     except Exception:
         db.rollback()
         logger.exception("Failed to persist showcase result (%s)", kind)
+        return None
 
 
 def _save_upload(upload: UploadFile) -> Path:
@@ -188,37 +195,30 @@ def _save_upload(upload: UploadFile) -> Path:
     return Path(tmp)
 
 
-def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: int, source_ref: str) -> TranscriptResponse:
+def _do_transcribe(path: Path, language: Optional[str]) -> "TranscriptResult":
     from app.services import transcription_service as ts
-    from app.services.media_ingestion_service import index_transcript_chunks
+    from app.services.cloud_transcription_service import cloud_provider, transcribe_cloud
 
-    result = ts.transcribe_audio(path, language=language)
+    provider = cloud_provider()
+    if provider:
+        try:
+            result = transcribe_cloud(path, language=language)
+        except Exception:
+            logger.exception("Cloud transcription (%s) failed for %s — falling back to local whisper", provider, path)
+            result = ts.transcribe_audio(path, language=language)
+    else:
+        result = ts.transcribe_audio(path, language=language)
+    return result
+
+
+def _result_to_response(result, source_ref: str, fallback_name: str) -> TranscriptResponse:
+    from app.services import transcription_service as ts
+    from app.services.text_sanitizer_service import llm_polish, sanitize_text
+
+    result.text = llm_polish(sanitize_text(result.text, result.language), result.language)
+    for seg in result.segments:
+        seg.text = sanitize_text(seg.text, result.language)
     payload = ts.transcript_to_json(result)
-
-    indexed = 0
-    graph_entities = 0
-    if index and payload["segments"]:
-        try:
-            indexed = index_transcript_chunks(
-                filename=source_ref or path.name,
-                owner_id=owner_id,
-                segments=payload["segments"],
-                source_ref=source_ref or str(path),
-            )
-        except Exception:
-            logger.exception("Transcript indexing failed for %s", source_ref)
-        try:
-            from app.services.media_ingestion_service import index_transcript_graph
-            graph = index_transcript_graph(
-                filename=source_ref or path.name,
-                owner_id=owner_id,
-                segments=payload["segments"],
-                source_ref=source_ref or str(path),
-            )
-            graph_entities = int(graph.get("entities", 0))
-        except Exception:
-            logger.exception("Transcript graph indexing failed for %s", source_ref)
-
     return TranscriptResponse(
         text=payload["text"],
         language=payload["language"],
@@ -229,10 +229,67 @@ def _do_transcribe(path: Path, language: Optional[str], index: bool, owner_id: i
         model=payload["model"],
         device=payload["device"],
         segments=[TranscriptSegmentOut(**s) for s in payload["segments"]],
-        source_ref=source_ref or str(path),
-        indexed_chunks=indexed,
-        graph_entities=graph_entities,
+        source_ref=source_ref or fallback_name,
+        indexed_chunks=0,
+        graph_entities=0,
     )
+
+
+def _index_transcript(segments, owner_id: int, source_ref: str, fallback_name: str) -> Tuple[int, int]:
+    """RAG + graph indexing for transcript segments. Runs after the job is
+    already marked complete — the transcript displays in seconds while
+    chunking/embedding continues in the background."""
+    from app.services.media_ingestion_service import index_transcript_chunks
+
+    indexed = 0
+    graph_entities = 0
+    if segments:
+        try:
+            indexed = index_transcript_chunks(
+                filename=source_ref or fallback_name,
+                owner_id=owner_id,
+                segments=segments,
+                source_ref=source_ref or fallback_name,
+            )
+        except Exception:
+            logger.exception("Transcript indexing failed for %s", source_ref)
+        try:
+            from app.services.media_ingestion_service import index_transcript_graph
+            graph = index_transcript_graph(
+                filename=source_ref or fallback_name,
+                owner_id=owner_id,
+                segments=segments,
+                source_ref=source_ref or fallback_name,
+            )
+            graph_entities = int(graph.get("entities", 0))
+        except Exception:
+            logger.exception("Transcript graph indexing failed for %s", source_ref)
+    return indexed, graph_entities
+
+
+def _patch_index_counts(db: Session, job_id: int, history_id: Optional[int], indexed: int, graph_entities: int) -> None:
+    """Write final indexed_chunks/graph_entities into the job result and the
+    history row after background indexing finishes."""
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job and job.result:
+            payload = json.loads(job.result)
+            if isinstance(payload, dict) and "text" in payload:
+                payload["indexed_chunks"] = indexed
+                payload["graph_entities"] = graph_entities
+                job.result = json.dumps(payload)
+        if history_id:
+            row = db.query(ShowcaseResult).filter(ShowcaseResult.id == history_id).first()
+            if row and row.payload:
+                payload = json.loads(row.payload)
+                if isinstance(payload, dict):
+                    payload["indexed_chunks"] = indexed
+                    payload["graph_entities"] = graph_entities
+                    row.payload = json.dumps(payload)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to patch index counts for job %s", job_id)
 
 
 def _set_job_stage(db: Session, job_id: int, stage: str) -> None:
@@ -261,26 +318,45 @@ def _run_transcribe_job(
     history, so it survives even if the user navigates away mid-run.
     """
     from app.services.media_ingestion_service import resolve_media_source
+    from app.services.subtitle_service import fetch_youtube_subtitles
 
     db = create_db_session()
     cleanup_file = file_path is not None
     try:
-        _set_job_stage(db, job_id, "downloading" if url else "transcribing")
-
         source_ref = display_name
-        if url:
-            source = resolve_media_source(url)
-            path = source.local_path
-            source_ref = source.source_ref
-            display_name = source.display_name or source.source_ref
-        else:
-            path = file_path
+        result = None
 
-        _set_job_stage(db, job_id, "transcribing")
-        resp = _do_transcribe(path, language, index, owner_id, source_ref)
+        if url:
+            # Fast path: existing subtitle/caption track returns a timestamped
+            # transcript in ~1-2s — no download, no whisper inference.
+            _set_job_stage(db, job_id, "fetching subtitles")
+            sub_langs = [language] if language else None
+            sub_result, sub_title = fetch_youtube_subtitles(url, sub_langs)
+            if sub_result:
+                display_name = sub_title or display_name
+                source_ref = url
+                result = sub_result
+
+        if result is None:
+            _set_job_stage(db, job_id, "downloading" if url else "transcribing")
+            if url:
+                source = resolve_media_source(url)
+                path = source.local_path
+                source_ref = source.source_ref
+                display_name = source.display_name or source.source_ref
+            else:
+                path = file_path
+
+            _set_job_stage(db, job_id, "transcribing")
+            result = _do_transcribe(path, language)
+
+        _set_job_stage(db, job_id, "polishing")
+        resp = _result_to_response(result, source_ref, display_name)
 
         _set_job_stage(db, job_id, "saving")
-        _save_result(db, owner_id, "transcript", display_name, source_ref, resp.model_dump())
+        history_id = _save_result(
+            db, owner_id, "transcript", display_name, source_ref, resp.model_dump()
+        )
 
         job = db.query(Job).filter(Job.id == job_id).first()
         if job:
@@ -288,6 +364,15 @@ def _run_transcribe_job(
             job.result = json.dumps(resp.model_dump())
             db.commit()
         logger.info("Transcription job %s completed (%s, %s)", job_id, source_ref, display_name)
+
+        # RAG/graph indexing is decoupled — the transcript is already visible;
+        # embedding 100+ chunks can take minutes and must not block it.
+        if index and resp.segments:
+            seg_dicts = [s.model_dump() for s in resp.segments]
+            indexed, graph_entities = _index_transcript(
+                seg_dicts, owner_id, source_ref, display_name
+            )
+            _patch_index_counts(db, job_id, history_id, indexed, graph_entities)
     except Exception as exc:
         logger.exception("Transcription job %s failed", job_id)
         try:

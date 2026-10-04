@@ -201,14 +201,15 @@ class TestTranscriptionService(unittest.TestCase):
 
     def test_bengali_avagraha_is_normalized(self):
         """Whisper emits U+09B5 (঵) for ভ in Bengali output."""
-        self.assertEqual(
-            ts_svc._normalize_script_artifacts("঵িসা ঵িডিও", "bn"),
-            "ভিসা ভিডিও",
-        )
+        from app.services.text_sanitizer_service import sanitize_text
+        self.assertEqual(sanitize_text("঵িসা ঵িডিও", "bn"), "ভিসা ভিডিও")
         # Other languages untouched
-        self.assertEqual(
-            ts_svc._normalize_script_artifacts("঵িসা", "hi"), "঵িসা"
-        )
+        self.assertEqual(sanitize_text("঵িসা", "hi"), "঵িসা")
+
+    def test_sanitizer_strips_artifacts(self):
+        from app.services.text_sanitizer_service import sanitize_text
+        self.assertEqual(sanitize_text("hello--world  , ok", "en"), "hello-world ok")
+        self.assertEqual(sanitize_text("line \x07 noise", "en"), "line noise")
 
     def test_consecutive_duplicate_segments_are_collapsed(self):
         """Whisper's residual hallucination loops emit the same phrase dozens
@@ -230,6 +231,37 @@ class TestTranscriptionService(unittest.TestCase):
             result = ts_svc.transcribe_audio("loop.m4a")
         texts = [s.text for s in result.segments]
         self.assertEqual(texts, ["real intro text", "looped phrase", "different ending"])
+
+    def test_json3_subtitle_parsing(self):
+        """YouTube json3 cues merge into readable timestamped segments."""
+        from app.services.subtitle_service import _parse_json3
+        doc = {"events": [
+            {"tStartMs": 0, "dDurationMs": 2000, "segs": [{"utf8": "আজকে "}, {"utf8": "আমি"}]},
+            {"tStartMs": 2000, "dDurationMs": 2000, "segs": [{"utf8": " বলবো"}]},
+        ]}
+        segs = _parse_json3(doc)
+        self.assertEqual(len(segs), 1)
+        self.assertEqual(segs[0].start, 0.0)
+        self.assertEqual(segs[0].end, 4.0)
+        self.assertEqual(segs[0].text, "আজকে আমি বলবো")
+
+    def test_cloud_provider_selection(self):
+        from app.services import cloud_transcription_service as cs
+        # No keys -> local whisper
+        with mock.patch.multiple(cs, GROQ_API_KEY="", GEMINI_API_KEY="",
+                                 TRANSCRIBE_PROVIDER="auto"):
+            self.assertIsNone(cs.cloud_provider())
+        # Groq key wins over gemini in auto mode
+        with mock.patch.multiple(cs, GROQ_API_KEY="gsk_x", GEMINI_API_KEY="k",
+                                 TRANSCRIBE_PROVIDER="auto"):
+            self.assertEqual(cs.cloud_provider(), "groq")
+        # Explicit provider override
+        with mock.patch.multiple(cs, GROQ_API_KEY="gsk_x", GEMINI_API_KEY="k",
+                                 TRANSCRIBE_PROVIDER="gemini"):
+            self.assertEqual(cs.cloud_provider(), "gemini")
+        with mock.patch.multiple(cs, GROQ_API_KEY="gsk_x",
+                                 TRANSCRIBE_PROVIDER="local"):
+            self.assertIsNone(cs.cloud_provider())
 
 
 class TestMediaIngestion(unittest.TestCase):

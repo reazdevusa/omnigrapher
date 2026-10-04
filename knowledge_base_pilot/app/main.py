@@ -6,7 +6,7 @@ import os
 import shutil
 import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, List, Optional
 from urllib.parse import unquote
@@ -115,6 +115,37 @@ from app.schemas import (
 
 
 @asynccontextmanager
+def _recover_stale_jobs() -> int:
+    """Mark transcription jobs orphaned by a backend restart as failed.
+
+    Background threads die with the process, so jobs left 'running' would
+    poll forever without this. Only jobs untouched for 60s+ are reaped —
+    startup init work can delay this well past process start, and we must
+    not kill a job created after the restart."""
+    try:
+        from app.database import create_db_session, Job
+
+        db = create_db_session()
+        cutoff = datetime.utcnow() - timedelta(seconds=60)
+        try:
+            stale = (
+                db.query(Job)
+                .filter(Job.status.in_(["running", "pending"]), Job.updated_at < cutoff)
+                .all()
+            )
+            for job in stale:
+                job.status = "failed"
+                job.result = json.dumps({"stage": "failed", "error": "Interrupted by backend restart"})
+            if stale:
+                db.commit()
+            return len(stale)
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Stale job recovery failed")
+        return 0
+
+
 async def lifespan(app: FastAPI):
     """Start heavy work in the background so the HTTP server can accept requests
     immediately and health checks stay instant."""
@@ -124,6 +155,9 @@ async def lifespan(app: FastAPI):
         try:
             # Run blocking DB migrations/schema setup in a thread so we don't
             # block the event loop.
+            # Reap orphaned jobs first — init_db can take minutes on a cold
+            # start and the reaper must not see post-restart jobs as stale.
+            await loop.run_in_executor(None, _recover_stale_jobs)
             await loop.run_in_executor(None, init_db)
             from app.tasks.ingestion import recover_stale_tasks
 

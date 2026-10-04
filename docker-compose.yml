@@ -148,6 +148,9 @@ services:
       - WHISPER_COMPUTE_TYPE=int8_float16
       - WHISPER_MODEL=large-v3
       - WHISPER_FAST_MODEL=turbo
+      # Cloud ASR keys (GROQ_API_KEY/GEMINI_API_KEY/TRANSCRIBE_PROVIDER) are
+      # read from knowledge_base_pilot/.env via load_dotenv — do NOT inject
+      # them here, an empty compose value would shadow the file.
       - LLM_MODEL=llama3.2:latest
       - EMBED_MODEL=nomic-embed-text:latest
       - VLM_MODEL=llava:latest
