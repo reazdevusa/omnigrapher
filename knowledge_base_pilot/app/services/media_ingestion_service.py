@@ -79,7 +79,7 @@ def _download_remote_audio(url: str) -> MediaSource:
         # tv/ios clients serve formats without the n-challenge/signature
         # deciphering round-trip the default web client needs — shaves
         # several seconds off extraction for YouTube URLs.
-        "extractor_args": {"youtube": {"player_client": ["tv", "ios", "default"]}},
+        "extractor_args": {"youtube": {"player_client": ["tv", "ios"]}},
         "socket_timeout": 20,
         # googlevideo throttles each connection hard (~50-100KB/s). aria2c
         # splits the file into parallel range requests, and resume/retries
@@ -94,11 +94,30 @@ def _download_remote_audio(url: str) -> MediaSource:
             "aria2c": ["-x", "16", "-k", "1M", "--summary-interval=0",
                        "--console-log-level=warn", "--file-allocation=none"]
         }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        title = info.get("title") or "remote-media"
-        vid = info.get("id") or "media"
-        ext = info.get("ext") or "m4a"
+    # YouTube occasionally 403s a whole extraction (IP rate-limit / client
+    # fingerprint). Retrying with a rotated player_client set usually succeeds
+    # — the client's format URLs are what get blocked, not the video itself.
+    client_sets = [["tv", "ios"], ["android", "web"], ["mweb", "default"]]
+    info = None
+    last_exc: Optional[Exception] = None
+    for attempt, clients in enumerate(client_sets):
+        try:
+            run_opts = dict(opts)
+            run_opts["extractor_args"] = {"youtube": {"player_client": clients}}
+            with yt_dlp.YoutubeDL(run_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+            break
+        except Exception as exc:  # noqa: BLE001 — yt-dlp raises many types
+            last_exc = exc
+            logger.warning(
+                "yt-dlp attempt %d/%d failed with clients=%s: %s",
+                attempt + 1, len(client_sets), clients, exc,
+            )
+    if info is None:
+        raise last_exc or RuntimeError(f"yt-dlp failed for {url}")
+    title = info.get("title") or "remote-media"
+    vid = info.get("id") or "media"
+    ext = info.get("ext") or "m4a"
     matches = sorted(
         (p for p in _MEDIA_DIR.glob(f"*-{vid}.*") if p.suffix != ".part"),
         key=lambda p: p.stat().st_mtime,

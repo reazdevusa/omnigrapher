@@ -230,12 +230,12 @@ def _swap_to_cpu_model(name: str) -> None:
 # Anti-hallucination decode options — whisper's most common long-form failure
 # is the conditioning loop: one hallucinated segment gets fed back as context
 # and the model repeats it for minutes. condition_on_previous_text=False makes
-# each window decode independently; no_repeat_ngram_size blocks intra-segment
-# phrase repeats; hallucination_silence_threshold (needs vad_filter) skips
-# silence after a detected hallucination instead of decoding through it.
+# each window decode independently; hallucination_silence_threshold (needs
+# vad_filter) skips silence after a detected hallucination instead of decoding
+# through it. NOTE: do not add no_repeat_ngram_size — A/B testing showed it
+# forces the decoder into low-probability garbage on Bengali/Indic scripts.
 _ANTI_LOOP_KWARGS = dict(
     condition_on_previous_text=False,
-    no_repeat_ngram_size=3,
     hallucination_silence_threshold=2.0,
 )
 
@@ -294,13 +294,26 @@ def _auto_beam_size() -> int:
     )
 
 
+def _normalize_script_artifacts(text: str, language: Optional[str]) -> str:
+    """Fix systematic whisper glyph substitutions for specific languages.
+
+    For Bengali, whisper reliably emits U+09B5 (঵) where ভ (U+09AD) is meant
+    — e.g. "঵িসা" instead of "ভিসা". U+09B5 is essentially never legitimate in
+    normal Bengali prose, so the mapping is unambiguous.
+    """
+    if language == "bn":
+        text = text.replace("঵", "ভ")
+    return text
+
+
 def _build_result(segments_raw, info, model_name: str, translated: bool) -> TranscriptResult:
+    lang = getattr(info, "language", None)
     segments: List[TranscriptSegment] = []
     parts: List[str] = []
     dropped = 0
     last_text = ""
     for seg in segments_raw:
-        text = (seg.text or "").strip()
+        text = _normalize_script_artifacts((seg.text or "").strip(), lang)
         if not text:
             continue
         # Collapse consecutive identical segments — whisper hallucination
@@ -314,7 +327,6 @@ def _build_result(segments_raw, info, model_name: str, translated: bool) -> Tran
         parts.append(text)
     if dropped:
         logger.warning("Dropped %d repeated hallucination segments", dropped)
-    lang = getattr(info, "language", None)
     return TranscriptResult(
         text=" ".join(parts),
         segments=segments,

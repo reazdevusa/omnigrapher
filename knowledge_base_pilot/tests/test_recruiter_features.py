@@ -195,8 +195,20 @@ class TestTranscriptionService(unittest.TestCase):
         self.assertTrue(_FakeWhisperModel.KWARGS)
         for kw in _FakeWhisperModel.KWARGS:
             self.assertFalse(kw.get("condition_on_previous_text", True))
-            self.assertEqual(kw.get("no_repeat_ngram_size"), 3)
             self.assertEqual(kw.get("hallucination_silence_threshold"), 2.0)
+            # no_repeat_ngram_size corrupts Bengali/Indic output — must stay off
+            self.assertIsNone(kw.get("no_repeat_ngram_size"))
+
+    def test_bengali_avagraha_is_normalized(self):
+        """Whisper emits U+09B5 (঵) for ভ in Bengali output."""
+        self.assertEqual(
+            ts_svc._normalize_script_artifacts("঵িসা ঵িডিও", "bn"),
+            "ভিসা ভিডিও",
+        )
+        # Other languages untouched
+        self.assertEqual(
+            ts_svc._normalize_script_artifacts("঵িসা", "hi"), "঵িসা"
+        )
 
     def test_consecutive_duplicate_segments_are_collapsed(self):
         """Whisper's residual hallucination loops emit the same phrase dozens
